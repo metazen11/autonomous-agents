@@ -55,6 +55,13 @@ Every phase has a mandatory completion gate. The pipeline will NOT stop after wr
 | `agents/db-analyst.md` | PostgreSQL/MySQL query perf, bloat, index, lock analysis | sonnet | No |
 | `agents/dep-auditor.md` | CVE scanning for npm, pip, Docker with exploitability assessment | haiku | No |
 
+### Compliance Agents
+| File | Role | Model | Destructive |
+|------|------|-------|-------------|
+| `agents/soc2-auditor.md` | SOC 2 Type II Trust Service Criteria audit (CC1-CC9) | sonnet | No |
+| `agents/hipaa-auditor.md` | HIPAA §164.312 technical safeguards audit, PHI data flow mapping | sonnet | No |
+| `agents/compliance-fixer.md` | Implements SOC 2 / HIPAA fixes with audit trail and rollback plans | sonnet | **Yes** |
+
 \* QA tester writes test files and starts dev servers but does not modify application code.
 
 ## Installation

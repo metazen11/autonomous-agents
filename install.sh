@@ -32,7 +32,7 @@ check_source() {
     error "Missing: pipeline/autonomous.md"
     missing=1
   fi
-  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor)
+  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor soc2-auditor hipaa-auditor compliance-fixer)
   for agent in "${agents[@]}"; do
     if [[ ! -f "${SCRIPT_DIR}/agents/${agent}.md" ]]; then
       error "Missing: agents/${agent}.md"
@@ -93,7 +93,7 @@ check_install() {
     fail=$((fail + 1))
   fi
 
-  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor)
+  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor soc2-auditor hipaa-auditor compliance-fixer)
   for agent in "${agents[@]}"; do
     if [[ -f "${AGENTS_DIR}/${agent}.md" ]]; then
       info "Agent: ${agent}"
@@ -126,7 +126,7 @@ remove_install() {
     warn "Pipeline skill not found (already removed?)"
   fi
 
-  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor)
+  local agents=(code-reviewer qa-tester security-auditor security-fixer perf-profiler infra-checker db-analyst dep-auditor soc2-auditor hipaa-auditor compliance-fixer)
   for agent in "${agents[@]}"; do
     if [[ -f "${AGENTS_DIR}/${agent}.md" ]]; then
       rm "${AGENTS_DIR}/${agent}.md"
