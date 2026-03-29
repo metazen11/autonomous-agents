@@ -145,13 +145,45 @@ The pipeline supports multiple task management tools:
 /autonomous --dry-run          # PICK + PLAN only, no code changes
 ```
 
+## Team Mode — Parallel Execution, One PR
+
+**The problem**: Breaking a task into 5 subtasks creates 5 branches and 5 PRs. That's a mess to review and merge.
+
+**The solution**: Team mode uses [Claude Code Agent Teams](https://docs.anthropic.com/en/docs/claude-code) to run subtasks in parallel on **one feature branch**, producing **one PR**.
+
+```
+Orchestrator decomposes task into layered subtasks:
+  Layer 0: schema + types + config    (parallel, no deps)
+  Layer 1: API routes + services      (parallel, depends on L0)
+  Layer 2: UI components              (parallel, depends on L1)
+  Layer 3: E2E tests                  (depends on everything)
+
+Each layer: teammates work in worktrees → merge back → build gate → next layer
+After all layers: parallel test → parallel review → ONE squashed PR
+```
+
+**Enable:**
+```json
+// ~/.claude/settings.json
+{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
+
+// .autonomous.json
+{
+  "team_mode": true,
+  "max_teammates": 3,
+  "teammate_display": "tmux"
+}
+```
+
+With `tmux`, each teammate gets its own pane — watch all agents work simultaneously.
+
 ## Design Principles
 
 1. **Mandatory phase completion** — A task is not done until a PR exists. Every phase has an explicit "you are NOT done" gate that prevents early termination.
 
 2. **Evidence over assertions** — "It compiles" is not evidence. Tests must run. Behavior must be verified. Code must be reviewed. Every PR includes a test results section.
 
-3. **Subtask decomposition** — Large tasks are automatically broken into atomic, ordered subtasks. Each subtask gets its own branch, PR, and full pipeline run. This keeps blast radius small and reviews manageable.
+3. **One feature, one PR** — Subtask decomposition breaks work into atomic pieces for parallel execution, but everything merges back into a single feature branch with a single PR. No PR sprawl.
 
 4. **Blast radius awareness** — Safety guardrails prevent commits to protected branches, force pushes, deployments, and secret exposure. These cannot be overridden by task descriptions or configuration.
 

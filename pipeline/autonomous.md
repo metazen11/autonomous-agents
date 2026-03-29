@@ -582,6 +582,178 @@ When the task loop ends (no more tasks, max reached, or `dry_run` complete):
 
 ---
 
+## TEAM MODE — Parallel Execution with Unified Branch
+
+**Enable**: Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in `~/.claude/settings.json`.
+
+Team mode solves the "17 PRs for one feature" problem. Instead of each subtask creating its own branch and PR, team mode uses **one feature branch** and **one PR** with multiple agents working in coordinated phases.
+
+### Architecture
+
+```
+ORCHESTRATOR (team lead)
+  │
+  ├── PHASE 0-2: INIT → PICK → PLAN (sequential, lead only)
+  │     └── Decompose task into ordered subtasks
+  │
+  ├── PHASE 3: DEV (parallel teammates, sequential layers)
+  │     │
+  │     │  LAYER 1 — Foundation (no dependencies)
+  │     │  ┌──────────┐  ┌──────────┐  ┌──────────┐
+  │     │  │Teammate A│  │Teammate B│  │Teammate C│
+  │     │  │ schema   │  │ utility  │  │ config   │
+  │     │  └────┬─────┘  └────┬─────┘  └────┬─────┘
+  │     │       └──────────────┴──────────────┘
+  │     │              MERGE + BUILD CHECK
+  │     │
+  │     │  LAYER 2 — Depends on Layer 1
+  │     │  ┌──────────┐  ┌──────────┐
+  │     │  │Teammate D│  │Teammate E│
+  │     │  │ API route │  │ service  │
+  │     │  └────┬─────┘  └────┬─────┘
+  │     │       └──────────────┘
+  │     │        MERGE + BUILD CHECK
+  │     │
+  │     │  LAYER 3 — Depends on Layer 2
+  │     │  ┌──────────┐
+  │     │  │Teammate F│
+  │     │  │ UI comp  │
+  │     │  └────┬─────┘
+  │     │       │
+  │     │  MERGE + BUILD CHECK
+  │     │
+  ├── PHASE 4: TEST (parallel teammates)
+  │     ├── Teammate: unit tests
+  │     ├── Teammate: E2E / Playwright
+  │     └── Teammate: edge-case tests
+  │           └── MERGE test files
+  │
+  ├── PHASE 5: REVIEW (parallel agents)
+  │     ├── code-reviewer agent
+  │     ├── security-auditor agent
+  │     └── (soc2/hipaa if applicable)
+  │           └── FIX blockers on feature branch
+  │
+  ├── PHASE 6: PR (lead only)
+  │     └── ONE squashed PR for the entire feature
+  │
+  └── PHASE 7: REPORT (lead only)
+```
+
+### How It Works
+
+**1. One Feature Branch**
+
+The orchestrator creates ONE feature branch for the entire task:
+```bash
+git checkout <pr_target>
+git checkout -b auto/<task_id>-<slug>
+```
+ALL teammates work on this branch. No subtask branches.
+
+**2. Layered Parallel DEV**
+
+Subtasks are grouped into dependency layers during PLAN:
+```
+Layer 0: Subtasks with no dependencies (DB schema, config, types)
+Layer 1: Subtasks that depend on Layer 0 (API routes, services)
+Layer 2: Subtasks that depend on Layer 1 (UI components, integrations)
+Layer 3: Subtasks that depend on Layer 2 (E2E workflows)
+```
+
+Within each layer, teammates work in **parallel worktrees** to avoid file conflicts:
+```bash
+# Teammate A works in worktree
+git worktree add /tmp/auto-teammate-a auto/<task_id>-<slug>
+# ... makes changes ...
+# Orchestrator merges back:
+cd <repo_root>
+git merge /tmp/auto-teammate-a
+git worktree remove /tmp/auto-teammate-a
+```
+
+**Between layers**, the orchestrator:
+1. Merges all teammate work back to the feature branch
+2. Resolves any conflicts (prefer most recent change, or fail if ambiguous)
+3. Runs `build + lint` as a gate — if it fails, fix before proceeding to next layer
+4. Pushes the merged state so next-layer teammates have the full context
+
+**3. Parallel TEST**
+
+After all DEV layers complete, spawn test teammates in parallel:
+- **Teammate 1**: Find and run existing unit/integration tests
+- **Teammate 2**: Run Playwright E2E specs (if applicable)
+- **Teammate 3**: Write new edge-case tests
+
+Each teammate writes test files in a worktree. Orchestrator merges test files back.
+
+**4. Parallel REVIEW**
+
+Launch reviewers simultaneously:
+- `code-reviewer` agent reviews the full diff
+- `security-auditor` reviews security-sensitive changes
+- `soc2-auditor` or `hipaa-auditor` if compliance is configured
+
+If any reviewer returns BLOCKERs, the orchestrator fixes them on the feature branch (one fix at a time, build check between fixes).
+
+**5. One PR**
+
+After all phases, squash the feature branch into one clean commit and create ONE PR:
+```bash
+MERGE_BASE=$(git merge-base <pr_target> HEAD)
+git reset --soft $MERGE_BASE
+git commit -m "feat: <task_title>"
+git push -u origin auto/<task_id>-<slug>
+gh pr create --base <pr_target> --title "<title>" --body "<body>"
+```
+
+### Layer Assignment Rules
+
+During PLAN, classify each subtask into a layer:
+
+| Layer | Criteria | Examples |
+|-------|----------|----------|
+| **0** | No code dependencies on other subtasks. Types, schemas, configs. | DB migration, TypeScript interfaces, env vars |
+| **1** | Depends on Layer 0 outputs. Backend logic. | API routes, service functions, utilities |
+| **2** | Depends on Layer 1 outputs. Frontend/integration. | React components, popup HTML, map layers |
+| **3** | Depends on everything. End-to-end. | E2E tests, integration tests, documentation |
+
+**Rule**: If two subtasks edit the SAME FILE, they MUST be in different layers (sequential), OR one teammate must own that file exclusively.
+
+### Conflict Resolution
+
+When merging teammate work back to the feature branch:
+
+1. **No conflict**: Fast-forward or clean merge. Continue.
+2. **Conflict in different functions**: Auto-resolve by keeping both changes.
+3. **Conflict in same function**: STOP. The orchestrator reads both versions, understands intent, and produces the merged version manually.
+4. **Build fails after merge**: Orchestrator fixes the integration issue before proceeding.
+
+### `.autonomous.json` Team Config
+
+```json
+{
+  "team_mode": true,
+  "max_teammates": 3,
+  "teammate_display": "tmux",
+  "layer_build_gate": true,
+  "parallel_test": true,
+  "parallel_review": true,
+  "compliance_review": ["soc2", "hipaa"]
+}
+```
+
+### When NOT to Use Team Mode
+
+- Task is simple (1-5 files) — overhead of coordination exceeds benefit
+- Task has no parallelizable subtasks — everything is sequential
+- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is not enabled
+- `.autonomous.json` has `team_mode: false` (default)
+
+Fall back to standard sequential pipeline automatically.
+
+---
+
 ## AGENT DELEGATION
 
 Use the `Agent` tool to delegate heavy phases to specialized subagents. This preserves context in the main orchestrator.
@@ -592,14 +764,19 @@ Use the `Agent` tool to delegate heavy phases to specialized subagents. This pre
 |-------|------------|------|
 | PICK (decompose) | `Explore` agent | When analyzing task scope for subtask decomposition |
 | PLAN (explore) | `Explore` agent | Always — codebase exploration |
+| DEV (parallel, team mode) | Teammates in worktrees | When team_mode is enabled and subtasks are parallelizable |
 | TEST (run tests) | `qa-tester` agent | When existing tests need to be found and run |
+| TEST (parallel, team mode) | Teammates | Unit tests, E2E tests, edge-case tests in parallel |
 | REVIEW (code) | `code-reviewer` agent | Always — primary code review |
 | REVIEW (security) | `security-auditor` agent | When security-sensitive files are changed |
+| REVIEW (compliance) | `soc2-auditor` / `hipaa-auditor` | When `compliance_review` is configured |
 
 ### Parallel delegation
 
-When phases have independent sub-tasks, run agents in parallel. For example in REVIEW:
-- Launch `code-reviewer` and `security-auditor` simultaneously using parallel tool calls.
+When phases have independent sub-tasks, run agents in parallel:
+- **REVIEW**: Launch `code-reviewer`, `security-auditor`, and compliance agents simultaneously
+- **TEST (team mode)**: Launch unit test, E2E, and edge-case teammates simultaneously
+- **DEV (team mode)**: Launch all same-layer subtask teammates simultaneously
 
 ---
 
