@@ -41,6 +41,5 @@ PYTHONPATH=. python3 scripts/run_pipeline.py --repo-root tmp/local-demo --action
 
 - This sample is from a real CLI execution, with repository-specific temp paths normalized into `<repo-root>/...`.
 - The checked-in `sample-runs/` directory is documentation-only. In normal runtime usage you will usually configure `.runs/` or `artifacts/`.
-- The sample ends in `failed` because the review step produced `changes_requested`.
-- The sample input includes `changed_files`, but `DEV` refreshes that field from local git state. In a non-git scratch directory the resulting `changed_files` value can be empty.
-- In a real git-backed repo with detected file changes, the same flow can move to `done` when review is approved.
+- This sample ends in `done`; `CODE_REVIEW`, `TEST`, and `REVIEW` all passed on the current `main` branch.
+- The sample input includes `changed_files`, and the current runtime preserves that metadata in scratch-directory runs.

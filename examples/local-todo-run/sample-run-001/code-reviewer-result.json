@@ -1,28 +1,30 @@
 {
   "status": "success",
-  "summary": "Code review requires changes; findings=1",
-  "verdict": "changes_requested",
-  "findings": [
-    {
-      "severity": "medium",
-      "title": "Limited diff context",
-      "detail": "No changed files were detected from task metadata or git state."
-    }
+  "summary": "Code review approved with recorded verification evidence.",
+  "verdict": "approved",
+  "findings": [],
+  "dry_risks": [],
+  "simplification_opportunities": [],
+  "naming_style_concerns": [],
+  "documentation_gaps": [],
+  "dependency_concerns": [],
+  "changed_files": [
+    "autonomous_pipeline/runner.py"
   ],
-  "changed_files": [],
   "verification_results": [
     {
+      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-build.log",
       "category": "build",
-      "status": "pass",
       "command": "python3 -c \"print('build ok')\"",
-      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-build.log"
+      "status": "pass"
     },
     {
+      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-unit.log",
       "category": "unit",
-      "status": "pass",
       "command": "python3 -c \"print('test ok')\"",
-      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-unit.log"
+      "status": "pass"
     }
   ],
-  "session_id": "<session-id>"
+  "stage": "REVIEW",
+  "session_id": "sample-session-001"
 }

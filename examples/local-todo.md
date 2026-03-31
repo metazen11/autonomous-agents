@@ -54,6 +54,7 @@ What it does:
 - picks the task
 - records planning
 - runs `DEV`
+- runs `CODE_REVIEW`
 - runs verification
 - runs automated review
 - runs improvement promotion
@@ -63,4 +64,4 @@ Notes:
 
 - the checked-in sample uses `sample-runs/` as a documentation-safe artifact directory; in normal usage you will usually use `.runs/` or `artifacts/`
 - `full-demo` is a scaffolded end-to-end demo of the current runtime, not autonomous code-authoring
-- `DEV` refreshes `changed_files` from local git state; in a non-git scratch directory that field may end up empty even if the input task included it
+- in the current runtime, `changed_files` from task metadata is preserved when local git state is unavailable

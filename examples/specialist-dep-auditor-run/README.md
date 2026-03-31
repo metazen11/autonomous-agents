@@ -24,3 +24,8 @@ PYTHONPATH=. python3 scripts/run_pipeline.py --repo-root tmp/dep-auditor-demo --
 
 - [specialist-output.json](specialist-output.json)
 - [dep-auditor-result.json](dep-auditor-result.json)
+
+## Notes
+
+- This sample is from a real CLI execution, with repository-specific temp paths normalized into `<repo-root>/...`.
+- The direct specialist flow writes artifacts under `artifacts/` rather than `sample-runs/`.

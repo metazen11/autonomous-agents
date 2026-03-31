@@ -1,32 +1,37 @@
 {
-  "session_id": "<session-id>",
+  "session_id": "sample-session-001",
   "repo_root": "<repo-root>",
+  "started_at": "2026-03-31T04:45:52+00:00",
   "mode": "full",
   "current_phase": "REPORT",
   "selected_task_id": "task-1",
-  "completed_tasks": [],
-  "failed_tasks": [
+  "completed_tasks": [
     "task-1"
   ],
+  "failed_tasks": [],
+  "skipped_tasks": [],
   "memory_status": "degraded",
   "memory_lessons_loaded": 0,
   "phase_history": [
     {
       "phase": "INIT",
       "status": "success",
-      "summary": "Runtime skeleton initialized with task source todo_json; memory degraded (...)",
+      "summary": "Runtime skeleton initialized with task source todo_json; memory degraded (GET /api/lessons?project=<repo-root>&limit=25 failed: [Errno 1] Operation not permitted)",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": []
     },
     {
       "phase": "PICK",
       "status": "success",
       "summary": "Selected task task-1: Exercise full local pipeline",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": []
     },
     {
       "phase": "PLAN",
       "status": "success",
       "summary": "Planning placeholder recorded by runtime skeleton",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": [
         "<repo-root>/sample-runs/sample-run-001/plan-summary.txt"
       ]
@@ -35,14 +40,25 @@
       "phase": "DEV",
       "status": "success",
       "summary": "Development command pass: python3 -c \"print('dev ok')\"",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": [
         "<repo-root>/sample-runs/sample-run-001/development.log"
+      ]
+    },
+    {
+      "phase": "CODE_REVIEW",
+      "status": "success",
+      "summary": "Code review approved with recorded verification evidence.",
+      "timestamp": "2026-03-31T04:45:52+00:00",
+      "artifacts": [
+        "<repo-root>/sample-runs/sample-run-001/code-reviewer-result.json"
       ]
     },
     {
       "phase": "TEST",
       "status": "success",
       "summary": "Verification results: build:pass, unit:pass",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": [
         "<repo-root>/sample-runs/sample-run-001/verification-build.log",
         "<repo-root>/sample-runs/sample-run-001/verification-unit.log"
@@ -51,7 +67,8 @@
     {
       "phase": "REVIEW",
       "status": "success",
-      "summary": "Code review requires changes; findings=1",
+      "summary": "Code review approved with recorded verification evidence.",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": [
         "<repo-root>/sample-runs/sample-run-001/code-reviewer-result.json"
       ]
@@ -59,15 +76,31 @@
     {
       "phase": "IMPROVE",
       "status": "success",
+      "summary": "Created follow-up for promotion candidate: Promote development command for Exercise full local pipeline",
+      "timestamp": "2026-03-31T04:45:52+00:00",
+      "artifacts": []
+    },
+    {
+      "phase": "IMPROVE",
+      "status": "success",
+      "summary": "Created follow-up for promotion candidate: Promote verification playbook for Exercise full local pipeline",
+      "timestamp": "2026-03-31T04:45:52+00:00",
+      "artifacts": []
+    },
+    {
+      "phase": "IMPROVE",
+      "status": "success",
       "summary": "Generated 2 promotion candidate(s) from recorded DEV/TEST evidence.",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": [
         "<repo-root>/sample-runs/sample-run-001/skill-promoter-result.json"
       ]
     },
     {
       "phase": "REPORT",
-      "status": "failed",
+      "status": "success",
       "summary": "local flow ok",
+      "timestamp": "2026-03-31T04:45:52+00:00",
       "artifacts": []
     }
   ]
