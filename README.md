@@ -1,217 +1,184 @@
-# Autonomous Agent Pipeline
+# Autonomous Agents
 
-A complete autonomous software engineering pipeline for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Pulls tasks from project management, implements end-to-end (plan → dev → test → review → PR), and reports results — no human intervention needed.
+Host-agnostic prompt pack and local Python runtime for autonomous software delivery.
 
-## Architecture
+This repository currently provides:
 
-```
-┌───────────────────────────────────────────────────────┐
-│                ORCHESTRATOR (pipeline)                 │
-│  INIT → PICK → PLAN → DEV → TEST → REVIEW → PR       │
-│              ↓                                        │
-│         SUBTASK DECOMPOSITION                         │
-│   Large tasks split into atomic, ordered subtasks     │
-│   Each subtask flows through the full pipeline        │
-└────────┬──────────┬───────────┬───────────────────────┘
-         │          │           │
-    ┌────▼────┐ ┌───▼───┐ ┌────▼─────┐
-    │Explore  │ │  QA   │ │Code      │
-    │Agent    │ │Tester │ │Reviewer  │
-    └─────────┘ └───┬───┘ └────┬─────┘
-                    │          │
-               ┌────▼────┐ ┌──▼───────┐
-               │Security │ │Perf      │
-               │Auditor  │ │Profiler  │
-               └─────────┘ └──────────┘
-```
+- a shared orchestration policy for `INIT -> PICK -> PLAN -> DEV -> CODE_REVIEW -> TEST -> REVIEW -> PR -> REPORT -> IMPROVE`
+- specialist agent contracts under [agents/](agents)
+- a runnable local Python runtime under [autonomous_pipeline/](autonomous_pipeline)
+- task adapters for `todo.json` and GitHub Issues
+- durable learning through `agentMemory`
+- host sync tooling for Claude, Codex, and Gemini
 
-## What It Does
+This repository is not yet a fully self-driving production orchestrator. The verified path today is a local-first runtime with real task pickup, artifacts, review/test flow, and host-native prompt-pack sync.
 
-1. **PICK** — Pulls the next task from Asana, GitHub Issues, Linear, or a local `tasks.json`
-2. **DECOMPOSE** — Large tasks are automatically split into atomic subtasks with dependency ordering
-3. **PLAN** — Explores the codebase, identifies files to change, estimates complexity
-4. **DEV** — Implements changes on an `auto/*` feature branch
-5. **TEST** — Build + lint + existing tests + new edge-case tests + behavioral verification
-6. **REVIEW** — Automated code review + security scan + secrets check
-7. **PR** — Squash, push, create pull request with full test evidence
-8. **REPORT** — Update task management tool, send notifications
+## Start Here
 
-Every phase has a mandatory completion gate. The pipeline will NOT stop after writing code — testing, review, and PR creation are enforced.
+- [docs/system-overview.md](docs/system-overview.md)
+- [docs/architectural-overview.md](docs/architectural-overview.md)
+- [docs/host-integration.md](docs/host-integration.md)
+- [examples/README.md](examples/README.md)
 
-## Files
+## Current Architecture
 
-### Pipeline Orchestrator
-- `pipeline/autonomous.md` — Main pipeline skill. 8-phase task execution loop with mandatory completion gates, subtask decomposition, safety guardrails, and session state management.
+There are four layers:
 
-### Specialized Agents
-| File | Role | Model | Destructive |
-|------|------|-------|-------------|
-| `agents/code-reviewer.md` | Staff-level PR code review | sonnet | No |
-| `agents/qa-tester.md` | Test selection, execution, edge-case generation, behavioral verification | sonnet | No* |
-| `agents/security-auditor.md` | SAST, dependency audit, OWASP Top 10 manual review | sonnet | No |
-| `agents/security-fixer.md` | Implements fixes from auditor findings with rollback plans | sonnet | **Yes** |
-| `agents/perf-profiler.md` | Lighthouse, API timing, bundle analysis, Core Web Vitals | sonnet | No |
-| `agents/infra-checker.md` | AWS, Docker, SSL, DNS health checks | haiku | No |
-| `agents/db-analyst.md` | PostgreSQL/MySQL query perf, bloat, index, lock analysis | sonnet | No |
-| `agents/dep-auditor.md` | CVE scanning for npm, pip, Docker with exploitability assessment | haiku | No |
+1. Prompt pack
+2. Local runtime
+3. Durable memory
+4. Host integration
 
-### Compliance Agents
-| File | Role | Model | Destructive |
-|------|------|-------|-------------|
-| `agents/soc2-auditor.md` | SOC 2 Type II Trust Service Criteria audit (CC1-CC9) | sonnet | No |
-| `agents/hipaa-auditor.md` | HIPAA §164.312 technical safeguards audit, PHI data flow mapping | sonnet | No |
-| `agents/compliance-fixer.md` | Implements SOC 2 / HIPAA fixes with audit trail and rollback plans | sonnet | **Yes** |
+Prompt pack:
 
-\* QA tester writes test files and starts dev servers but does not modify application code.
+- [pipeline/autonomous.md](pipeline/autonomous.md)
+- [agents/AGENT_AGNOSTIC_GUIDE.md](agents/AGENT_AGNOSTIC_GUIDE.md)
+- [agents/code-reviewer.md](agents/code-reviewer.md) and the rest of [agents/](agents)
 
-## Installation
+Local runtime:
 
-### Quick Install
-```bash
-git clone https://github.com/metazen11/autonomous-agents.git
-cd autonomous-agents
-chmod +x install.sh
-./install.sh
-```
+- [scripts/run_pipeline.py](scripts/run_pipeline.py)
+- [autonomous_pipeline/runner.py](autonomous_pipeline/runner.py)
+- [autonomous_pipeline/adapters/](autonomous_pipeline/adapters)
+- [autonomous_pipeline/specialists.py](autonomous_pipeline/specialists.py)
+- [autonomous_pipeline/verification.py](autonomous_pipeline/verification.py)
 
-### Symlink Install (recommended for development)
-```bash
-./install.sh --symlink
-```
-Edits to source files take effect immediately — no reinstall needed.
+Durable memory:
 
-### Verify Installation
-```bash
-./install.sh --check
-```
+- [docs/agent-memory.md](docs/agent-memory.md)
+- [autonomous_pipeline/memory/](autonomous_pipeline/memory)
+- [scripts/validate_agent_memory.py](scripts/validate_agent_memory.py)
 
-### Uninstall
-```bash
-./install.sh --remove
-```
+Host integration:
 
-### Manual Install
-```bash
-# Pipeline skill
-mkdir -p ~/.claude/skills/autonomous
-cp pipeline/autonomous.md ~/.claude/skills/autonomous/skill.md
+- [scripts/sync_prompt_pack.py](scripts/sync_prompt_pack.py)
+- [autonomous_pipeline/host_sync.py](autonomous_pipeline/host_sync.py)
+- generated host entrypoints such as `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`
 
-# Agent definitions
-mkdir -p ~/.claude/agents
-cp agents/*.md ~/.claude/agents/
-```
+## What Works Today
 
-## Configuration
+- canonical task model and run-state model
+- `todo.json` adapter for local/offline execution
+- GitHub Issues adapter for shared backlog execution
+- resumable local run state in `.autonomous-state.json`
+- artifact capture in `.runs/` or configured artifact directories
+- `CODE_REVIEW` before `TEST`
+- automated specialist execution for read-only analysis roles
+- improvement capture into `agentMemory`
+- sync into real Claude, Codex, and Gemini install directories
 
-### Project-specific overrides
+## What Does Not Work End To End Yet
 
-Create `.autonomous.json` in your repo root:
+- autonomous code authoring inside `DEV`
+- bounded-write fixer execution
+- fully automated branch, commit, and PR lifecycle for this repo exercised live from issue to merge
+- dedicated structured runs database beyond local state/artifacts and `agentMemory`
 
-```json
-{
-  "build": "npm run build",
-  "lint": "npm run lint",
-  "test": "npm test",
-  "playwright": "npx playwright test",
-  "pr_target": "dev",
-  "max_files": 20,
-  "max_minutes": 30,
-  "skip_tags": ["needs-human", "blocked", "wontfix"],
-  "task_source": "asana",
-  "project_aliases": {
-    "myapp": { "name": "My App", "gid": "1234567890" }
-  }
-}
-```
+## Pipeline
 
-### Task Sources
+The source-of-truth pipeline policy is [pipeline/autonomous.md](pipeline/autonomous.md).
 
-The pipeline supports multiple task management tools:
+Important current behaviors:
 
-| Source | Configuration | MCP Required |
-|--------|--------------|-------------|
-| **Asana** | `task_source: "asana"` + project GIDs | Asana MCP server |
-| **GitHub Issues** | `task_source: "github"` | `gh` CLI |
-| **Linear** | `task_source: "linear"` + team ID | Linear MCP server |
-| **File** | `task_source: "file"` → reads `tasks.json` | None |
+- `CODE_REVIEW` runs before `TEST`
+- code review enforces DRY, simplification, naming, style, docs/comments, and dependency concerns
+- `todo.json` is a first-class local adapter
+- GitHub Issues are the intended shared backlog for this repository
+- lessons and patterns should be promoted into `agentMemory`
 
-### Usage
+## Runtime Entry Points
+
+Local runtime:
 
 ```bash
-# Inside Claude Code
-/autonomous                    # Interactive project picker
-/autonomous myapp              # Use project alias
-/autonomous --max-tasks 3      # Limit tasks per session
-/autonomous --dry-run          # PICK + PLAN only, no code changes
+PYTHONPATH=. python3 scripts/run_pipeline.py --repo-root . --action full-demo
 ```
 
-## Team Mode — Parallel Execution, One PR
+Agent memory validation:
 
-**The problem**: Breaking a task into 5 subtasks creates 5 branches and 5 PRs. That's a mess to review and merge.
-
-**The solution**: Team mode uses [Claude Code Agent Teams](https://docs.anthropic.com/en/docs/claude-code) to run subtasks in parallel on **one feature branch**, producing **one PR**.
-
-```
-Orchestrator decomposes task into layered subtasks:
-  Layer 0: schema + types + config    (parallel, no deps)
-  Layer 1: API routes + services      (parallel, depends on L0)
-  Layer 2: UI components              (parallel, depends on L1)
-  Layer 3: E2E tests                  (depends on everything)
-
-Each layer: teammates work in worktrees → merge back → build gate → next layer
-After all layers: parallel test → parallel review → ONE squashed PR
+```bash
+PYTHONPATH=. python3 scripts/validate_agent_memory.py --project-path .
 ```
 
-**Enable:**
-```json
-// ~/.claude/settings.json
-{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
+Host feature matrix:
 
-// .autonomous.json
-{
-  "team_mode": true,
-  "max_teammates": 3,
-  "teammate_display": "tmux"
-}
+```bash
+PYTHONPATH=. python3 scripts/sync_prompt_pack.py print-host-features
 ```
 
-With `tmux`, each teammate gets its own pane — watch all agents work simultaneously.
+## Host Sync
 
-## Design Principles
+The repo is intended to be the single source of truth. A user pulls the repo, then syncs host installs from it.
 
-1. **Mandatory phase completion** — A task is not done until a PR exists. Every phase has an explicit "you are NOT done" gate that prevents early termination.
+Basic flow:
 
-2. **Evidence over assertions** — "It compiles" is not evidence. Tests must run. Behavior must be verified. Code must be reviewed. Every PR includes a test results section.
+```bash
+cp .env.example .env
+python3 scripts/sync_prompt_pack.py check
+python3 scripts/sync_prompt_pack.py sync
+python3 scripts/sync_prompt_pack.py install-git-hooks
+```
 
-3. **One feature, one PR** — Subtask decomposition breaks work into atomic pieces for parallel execution, but everything merges back into a single feature branch with a single PR. No PR sprawl.
+The sync layer now supports:
 
-4. **Blast radius awareness** — Safety guardrails prevent commits to protected branches, force pushes, deployments, and secret exposure. These cannot be overridden by task descriptions or configuration.
+- copied pipeline and specialist prompts
+- host-native instruction entrypoints
+- generated config snippets for hook or MCP wiring
+- periodic scheduler output for `cron`, `anacron`, `launchd`, and Windows Task Scheduler
 
-5. **Agent specialization** — Each agent has a single responsibility, a defined expertise level, and a structured reporting format. Agents delegate to each other but never step outside their role.
+See [examples/host-sync.md](examples/host-sync.md).
 
-6. **Self-improvement** — Agents maintain persistent memory of project conventions, past findings, and learned patterns. Memory is pruned to stay lean and relevant.
+## Host Coverage
 
-## Safety Guardrails
+Primary hosts wired today:
 
-These are hard-coded and **cannot be overridden**:
+- Claude
+- Codex
+- Gemini
 
-| Rule | Enforcement |
-|------|-------------|
-| Never commit to main/master/dev | Branch name verified before every commit |
-| Never force push | `--force` flags are blocked |
-| Never deploy | Deploy commands are blocklisted |
-| Never modify production databases | Only dev/test targets allowed |
-| Never expose secrets | Diff scanned for secret patterns before PR |
-| Never skip pre-commit hooks | `--no-verify` is blocked |
+Additional modeled hosts:
 
-## Requirements
+- Cursor
+- OpenClaw
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- `gh` CLI (for PR creation)
-- Git
-- Project-specific tools (Node.js, Python, etc.)
-- Task source MCP server (Asana, Linear) or `gh` CLI (GitHub Issues)
+The sync tool is path-based. It does not assume one host runtime is canonical.
 
-## License
+## Task Sources
 
-MIT
+Current supported task sources:
+
+- `todo.json`
+- GitHub Issues
+
+Design target:
+
+- keep adapters cohesive so other task systems or databases can map into the same canonical task model
+- avoid baking source-specific logic into the orchestration phases
+
+## Durable Learning
+
+The system is intended to improve itself through promotion:
+
+1. run artifacts
+2. pattern candidates
+3. playbooks
+4. scripts or packaged skills
+
+This learning layer should live in `agentMemory`, not only in chat history.
+
+## Anvil Direction
+
+The current repo runtime is Python-first and local-first. The likely execution direction is:
+
+- keep this repository as the workflow contract, adapters, docs, and sync layer
+- use `anvil` as the actual code-writing execution engine for `DEV`
+
+That integration direction is not complete in this repository yet, but it is the intended path for full autonomous code authoring.
+
+## Repository Backlog
+
+Public repo:
+
+- `https://github.com/metazen11/autonomous-agents`
+
+This repository should use GitHub Issues as its own productization backlog. The detailed implementation roadmap is still captured in [plan.txt](plan.txt).
