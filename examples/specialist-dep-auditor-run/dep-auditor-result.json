@@ -1,0 +1,14 @@
+{
+  "status": "success",
+  "summary": "Dependency audit completed with 1 finding(s).",
+  "findings": [
+    {
+      "severity": "medium",
+      "title": "Dependency manifest changed without lockfile",
+      "detail": "Dependency changes should usually update the corresponding lockfile."
+    }
+  ],
+  "manifests": [
+    "package.json"
+  ]
+}

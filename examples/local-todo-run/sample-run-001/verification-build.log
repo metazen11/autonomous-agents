@@ -1,0 +1,8 @@
+$ python3 -c "print('build ok')"
+attempt: 1/2
+exit_code: 0
+
+STDOUT:
+build ok
+
+STDERR:

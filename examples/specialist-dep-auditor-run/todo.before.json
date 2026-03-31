@@ -1,0 +1,15 @@
+{
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Dependency review",
+      "status": "ready",
+      "source": "todo_json",
+      "metadata": {
+        "changed_files": [
+          "package.json"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "task": {
+    "id": "task-1",
+    "title": "Exercise full local pipeline",
+    "status": "failed",
+    "source": "todo_json",
+    "artifacts": [
+      "<repo-root>/sample-runs/sample-run-001/plan-summary.txt",
+      "<repo-root>/sample-runs/sample-run-001/development.log",
+      "<repo-root>/sample-runs/sample-run-001/verification-build.log",
+      "<repo-root>/sample-runs/sample-run-001/verification-unit.log",
+      "<repo-root>/sample-runs/sample-run-001/code-reviewer-result.json",
+      "<repo-root>/sample-runs/sample-run-001/skill-promoter-result.json"
+    ],
+    "improvement_candidates": [
+      "Promote development command for Exercise full local pipeline",
+      "Promote verification playbook for Exercise full local pipeline"
+    ],
+    "metadata": {
+      "development_result": {
+        "status": "pass",
+        "command": "python3 -c \"print('dev ok')\"",
+        "artifact_path": "<repo-root>/sample-runs/sample-run-001/development.log",
+        "attempts": 1,
+        "changed_files": []
+      },
+      "review_verdict": "changes_requested",
+      "verification_results": [
+        {
+          "category": "build",
+          "status": "pass",
+          "command": "python3 -c \"print('build ok')\"",
+          "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-build.log"
+        },
+        {
+          "category": "unit",
+          "status": "pass",
+          "command": "python3 -c \"print('test ok')\"",
+          "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-unit.log"
+        }
+      ]
+    }
+  },
+  "development": {
+    "status": "pass",
+    "command": "python3 -c \"print('dev ok')\"",
+    "artifact_path": "<repo-root>/sample-runs/sample-run-001/development.log",
+    "attempts": 1,
+    "changed_files": []
+  },
+  "verification": [
+    {
+      "category": "build",
+      "status": "pass",
+      "command": "python3 -c \"print('build ok')\"",
+      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-build.log"
+    },
+    {
+      "category": "unit",
+      "status": "pass",
+      "command": "python3 -c \"print('test ok')\"",
+      "artifact_path": "<repo-root>/sample-runs/sample-run-001/verification-unit.log"
+    }
+  ],
+  "review": {
+    "status": "success",
+    "verdict": "changes_requested",
+    "artifact_path": "<repo-root>/sample-runs/sample-run-001/code-reviewer-result.json",
+    "summary": "Code review requires changes; findings=1"
+  },
+  "improvement": {
+    "status": "success",
+    "artifact_path": "<repo-root>/sample-runs/sample-run-001/skill-promoter-result.json",
+    "summary": "Generated 2 promotion candidate(s) from recorded DEV/TEST evidence.",
+    "promotions": [
+      {
+        "type": "follow_up",
+        "id": "follow-up-1"
+      },
+      {
+        "type": "follow_up",
+        "id": "follow-up-2"
+      }
+    ]
+  }
+}

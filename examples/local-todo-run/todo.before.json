@@ -1,0 +1,15 @@
+{
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Exercise full local pipeline",
+      "status": "ready",
+      "source": "todo_json",
+      "metadata": {
+        "changed_files": [
+          "autonomous_pipeline/runner.py"
+        ]
+      }
+    }
+  ]
+}

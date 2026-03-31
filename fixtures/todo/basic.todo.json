@@ -1,0 +1,24 @@
+{
+  "tasks": [
+    {
+      "id": "fixture-1",
+      "title": "Example local task",
+      "body": "Use this fixture to test todo.json pickup and updates.",
+      "status": "ready",
+      "priority": "medium",
+      "labels": ["fixture"],
+      "acceptance_criteria": [
+        "task can be claimed",
+        "task can be updated",
+        "artifacts can be recorded"
+      ],
+      "dependencies": [],
+      "subtasks": [],
+      "blockers": [],
+      "source": "todo_json",
+      "artifacts": [],
+      "improvement_candidates": [],
+      "metadata": {}
+    }
+  ]
+}

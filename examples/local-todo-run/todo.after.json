@@ -1,0 +1,39 @@
+{
+  "follow_ups": [
+    {
+      "id": "follow-up-1",
+      "title": "Promote development command for Exercise full local pipeline",
+      "candidate_type": "script",
+      "status": "ready"
+    },
+    {
+      "id": "follow-up-2",
+      "title": "Promote verification playbook for Exercise full local pipeline",
+      "candidate_type": "playbook",
+      "status": "ready"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Exercise full local pipeline",
+      "status": "failed",
+      "artifacts": [
+        "<repo-root>/sample-runs/sample-run-001/plan-summary.txt",
+        "<repo-root>/sample-runs/sample-run-001/development.log",
+        "<repo-root>/sample-runs/sample-run-001/verification-build.log",
+        "<repo-root>/sample-runs/sample-run-001/verification-unit.log",
+        "<repo-root>/sample-runs/sample-run-001/code-reviewer-result.json",
+        "<repo-root>/sample-runs/sample-run-001/skill-promoter-result.json"
+      ],
+      "improvement_candidates": [
+        "Promote development command for Exercise full local pipeline",
+        "Promote verification playbook for Exercise full local pipeline"
+      ],
+      "metadata": {
+        "review_verdict": "changes_requested",
+        "final_summary": "local flow ok"
+      }
+    }
+  ]
+}

@@ -1,0 +1,371 @@
+# Autonomous Agent System Productization Plan
+
+## Goal
+
+Turn this repository from an agent-agnostic prompt pack into a working autonomous delivery system that:
+
+- pulls work from GitHub Issues
+- pulls work from `todo.json` when local or offline execution is preferred
+- orchestrates a team of agents through a deterministic pipeline
+- verifies changes before reporting success
+- learns from repeated successful workflows
+- integrates cleanly with the existing agent-memory database and MCP tooling
+
+## Planning Principles
+
+- productize the runtime without re-coupling the prompts to a single host
+- support both GitHub Issues and `todo.json` as first-class task systems
+- treat agent-memory validation as a gated dependency because major infrastructure changes already occurred
+- make self-improvement measurable, not aspirational
+- promote proven workflows into scripts and skills instead of storing everything as loose memory
+- keep the runtime cross-operating-system compatible, which means shell can remain a thin export layer but not the core orchestrator
+
+## Track 0: Prompt Pack Hardening
+
+### 0.1 Normalize prompt contracts
+
+- Keep every prompt agent-agnostic.
+- Standardize input schema, output schema, severity vocabulary, write-scope rules, and escalation behavior.
+- Done when every file under `agents/` and `pipeline/` uses the shared neutral contract.
+
+### 0.2 Add continuous-improvement primitives
+
+- Encode the promotion ladder: run artifact -> pattern candidate -> playbook -> skill.
+- Define when the system should create scripts versus prompt updates versus memory entries.
+- Done when the orchestrator prompt and specialist prompts can explicitly surface automation opportunities.
+
+### 0.3 Add a process-improvement specialist
+
+- Keep `skill-promoter` as the system-improvement agent.
+- Use it after successful runs and after repeated failures or retries.
+- Done when promotion candidates have a structured output contract.
+
+## Track 1: Repository Restructure
+
+### 1.1 Create executable runtime layout
+
+- Add:
+  - `scripts/`
+  - `adapters/`
+  - `schemas/`
+  - `tests/`
+  - `fixtures/`
+  - `artifacts/` gitignored
+- Keep prompt files under `agents/` and `pipeline/`.
+
+### 1.2 Add honest docs split
+
+- `README.md` for current scope
+- `docs/architecture.md`
+- `docs/github-issues.md`
+- `docs/agent-memory.md`
+- `docs/improvement-loop.md`
+- `docs/agents.md`
+
+## Track 2: Runtime Core
+
+### 2.1 Choose implementation language
+
+- Use Python or TypeScript for the runtime core. Do not use shell as the primary orchestration layer.
+- Decision gate:
+  - prefer Python if the strongest requirement is reliability, schema validation, and tight integration with the existing Python-based agent-memory service
+  - prefer TypeScript if the strongest requirement is a single JavaScript runtime across Bun, Node, and future host tooling
+  - Bun is acceptable as a package runner or execution target for a TypeScript runtime, but the code should remain standards-based so Node compatibility is preserved
+  - keep shell only for tiny wrappers such as export, bootstrap, or convenience commands
+
+### 2.2 Build orchestrator skeleton
+
+- Add either `scripts/run_pipeline.py` or `src/run_pipeline.ts`.
+- Phases:
+  - INIT
+  - PICK
+  - PLAN
+  - DEV
+  - TEST
+  - REVIEW
+  - PR
+  - REPORT
+  - IMPROVE
+- Add resumable local state in `.autonomous-state.json`.
+
+### 2.3 Add typed schemas
+
+- Config schema for `.autonomous.json`
+- Canonical task schema
+- Subtask schema
+- Agent result schema
+- Run-state schema
+- Artifact manifest schema
+
+### 2.4 Add artifact capture
+
+- Persist per-run outputs under `artifacts/<run-id>/`
+- Capture:
+  - command transcripts
+  - test output
+  - review findings
+  - diff stats
+  - generated plans
+  - promotion candidates
+
+## Track 3: GitHub Issues Integration
+
+### 3.1 Implement first task adapter with GitHub Issues
+
+- Add `adapters/github.py`.
+- Normalize issue data into canonical task shape.
+- Support:
+  - open issues
+  - label filters
+  - skip labels
+  - priority sorting
+  - issue comments for phase progress
+  - linked subtasks through issue checklists or related issue references
+
+### 3.2 Define issue workflow
+
+- Labels:
+  - `autonomous:ready`
+  - `autonomous:blocked`
+  - `autonomous:human`
+  - `autonomous:in-progress`
+  - `autonomous:follow-up`
+- Comment template per phase with artifact links.
+- Close or relabel only after REPORT succeeds.
+
+### 3.3 Create follow-up automation issue path
+
+- When the system detects repeatable manual command chains, open a GitHub Issue for workflow promotion if it cannot be implemented immediately.
+- This is how the system keeps track of improving itself over time.
+
+## Track 3B: todo.json Integration
+
+### 3B.1 Define canonical todo.json schema
+
+- Add a schema for `todo.json` with:
+  - task ID
+  - title
+  - body
+  - status
+  - priority
+  - labels
+  - acceptance criteria
+  - subtasks
+  - dependencies
+  - blockers
+  - artifact references
+  - improvement candidates
+
+### 3B.2 Implement local task adapter
+
+- Add `adapters/todo_json.py` or `adapters/todo_json.ts`.
+- Support deterministic read, update, checkpoint, and conflict-safe writes.
+
+### 3B.3 Keep host neutrality
+
+- `todo.json` must work the same way whether the host is Codex, Claude, Gemini, or Anvil.
+- Host-specific metadata should live in adjacent state, not pollute the canonical task file.
+
+## Track 4: Agent-Memory Validation And Integration
+
+### 4.1 Validate current agent-memory architecture
+
+- Confirm the current service assumptions still hold after the recent changes:
+  - versioned migrations
+  - backup support
+  - BYOP / external Postgres support
+  - MCP server independence
+  - mem_ table schema
+- The memory recall suggests these features exist but must be re-verified against the current repo state.
+
+### 4.2 Add explicit integration checks
+
+- Verify:
+  - memory search still works
+  - write-back still works
+  - the 3-layer search workflow is still the expected usage model
+  - project scoping behaves correctly
+  - external DB configuration is still compatible
+
+### 4.3 Add orchestrator-side memory policy
+
+- Separate:
+  - durable conventions
+  - benchmark baselines
+  - run-specific artifacts
+  - promotion candidates
+- Do not dump all run logs into memory.
+- Promote only durable or repeated patterns.
+
+### 4.4 Add a memory regression test plan
+
+- Search returns expected records for a seeded project
+- Save memory succeeds
+- Timeline and full observation fetch behave correctly
+- Missing memory service downgrades gracefully instead of failing the pipeline
+
+## Track 5: Agent Team Execution Model
+
+### 5.1 Define agent contracts in code
+
+- For each specialist, capture:
+  - required inputs
+  - optional inputs
+  - read-only or writable status
+  - allowed write scope
+  - expected output schema
+  - escalation conditions
+
+### 5.2 Implement bounded parallelism
+
+- Allow only non-overlapping write scopes in parallel.
+- Use read-only agents freely for planning, review, and diagnostics.
+- Gate each parallel layer behind a merge and verification step.
+
+### 5.3 Add branch and merge strategy
+
+- One task branch per parent task
+- Optional temporary worker branches or worktrees for subtasks
+- Merge back after each verified layer
+- One final PR
+
+## Track 6: Verification Engine
+
+### 6.1 Implement command discovery and override policy
+
+- Auto-detect build, lint, test, and UI commands.
+- Allow `.autonomous.json` overrides.
+- Record the resolved commands into artifacts for reproducibility.
+
+### 6.2 Add verification categories
+
+- build
+- lint
+- unit
+- integration
+- UI
+- security
+- data
+- performance when requested
+
+### 6.3 Add failure-handling policy
+
+- retry once with the most likely fix for transient command issues
+- mark `needs_human` for credential or environment blockers
+- capture failure evidence before stopping
+
+## Track 7: Continuous Improvement Engine
+
+### 7.1 Mine repeated workflows
+
+- Parse command transcripts and run artifacts.
+- Detect repeated successful command sequences.
+- Detect repeated retries caused by missing preflight checks or fragile command syntax.
+
+### 7.2 Promotion rubric
+
+- Promote to memory when the pattern is durable but low-frequency.
+- Promote to playbook when the sequence needs structured human-readable steps.
+- Promote to script when the sequence is deterministic and repeated.
+- Promote to prompt-pack changes when the improvement is judgment-oriented.
+
+### 7.3 Define benchmarks
+
+- number of commands per completed task
+- manual interventions per task
+- median time per phase
+- verification pass rate on first attempt
+- reopened or blocked tasks
+- number of promoted workflows
+
+### 7.4 Add explicit self-improvement backlog
+
+- each promotion candidate becomes:
+  - direct implementation if cheap and safe
+  - otherwise a GitHub Issue tagged `autonomous:follow-up`
+
+This is the operational loop that lets the system improve its own productivity instead of just “remembering more.”
+
+## Track 8: Tests And Fixtures
+
+### 8.1 Unit tests
+
+- config parsing
+- task normalization
+- subtask decomposition output
+- run-state transitions
+- artifact manifest generation
+- promotion rubric
+
+### 8.2 Integration tests
+
+- GitHub issue pickup against fixtures or mocks
+- phase execution with stub agents
+- memory layer available and unavailable modes
+- graceful recovery from interrupted runs
+
+### 8.3 Fixture repos
+
+- small Node app
+- small Python service
+- repo with migrations and DB tasks
+- repo with frontend workflow requiring UI verification
+
+## Track 9: Delivery Sequence
+
+### Phase A
+
+- finalize prompt pack
+- add docs split
+- add schemas
+
+### Phase B
+
+- implement runtime skeleton
+- implement GitHub adapter
+- implement local run state and artifacts
+
+### Phase C
+
+- integrate agent-memory
+- add verification engine
+- add review pipeline
+
+### Phase D
+
+- add improvement engine
+- add benchmarks
+- add tests and fixtures
+
+## Immediate Next Issues To Create In GitHub
+
+1. `Bootstrap orchestrator runtime and schemas`
+2. `Implement GitHub Issues adapter`
+3. `Implement todo.json adapter and canonical local task schema`
+4. `Validate agent-memory integration after migration and BYOP changes`
+5. `Implement artifact capture and resumable run state`
+6. `Implement specialist agent contract layer`
+7. `Implement verification engine`
+8. `Implement continuous-improvement promotion engine`
+9. `Add pipeline tests and fixture repos`
+10. `Write architecture and integration docs`
+
+## Memory Recall
+
+Relevant recalled facts from agent-memory that should shape implementation:
+
+- agentMemory has versioned migrations, backup support, and BYOP support in a recent commit
+- the MCP server is designed to run independently from the FastAPI server
+- the memory system uses a 3-layer search workflow to keep token usage down
+- migration tooling exists for prior observation stores
+- the memory service architecture is substantial enough that integration should be verified, not assumed
+
+## Definition Of Done For This Project
+
+This project reaches its next meaningful state when:
+
+- the prompt pack remains agent-agnostic
+- GitHub Issues can drive real task pickup
+- agent-memory integration is verified against the current architecture
+- the runtime can complete at least one fixture task end to end
+- the system can identify and track at least one workflow it should automate after observing repeated manual repetition

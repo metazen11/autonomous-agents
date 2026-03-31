@@ -1,0 +1,8 @@
+$ python3 -c "print('test ok')"
+attempt: 1/2
+exit_code: 0
+
+STDOUT:
+test ok
+
+STDERR:

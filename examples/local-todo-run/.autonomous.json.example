@@ -1,0 +1,8 @@
+{
+  "task_source": "todo_json",
+  "todo_path": "todo.json",
+  "artifacts_dir": "sample-runs",
+  "development_command": "python3 -c \"print('dev ok')\"",
+  "build_command": "python3 -c \"print('build ok')\"",
+  "test_command": "python3 -c \"print('test ok')\""
+}

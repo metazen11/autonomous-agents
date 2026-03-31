@@ -1,0 +1,26 @@
+{
+  "status": "success",
+  "summary": "Generated 2 promotion candidate(s) from recorded DEV/TEST evidence.",
+  "promotions": [
+    {
+      "title": "Promote development command for Exercise full local pipeline",
+      "description": "Capture the successful DEV command as a reusable script: python3 -c \"print('dev ok')\"",
+      "candidate_type": "script",
+      "expected_benefit": "reduce repeated manual implementation commands",
+      "source_evidence": [
+        "<repo-root>/sample-runs/sample-run-001/development.log"
+      ]
+    },
+    {
+      "title": "Promote verification playbook for Exercise full local pipeline",
+      "description": "Bundle the successful verification chain into a documented playbook or scripted workflow.",
+      "candidate_type": "playbook",
+      "expected_benefit": "reduce repeated build/lint/test entry and improve consistency",
+      "source_evidence": [
+        "<repo-root>/sample-runs/sample-run-001/verification-build.log",
+        "<repo-root>/sample-runs/sample-run-001/verification-unit.log"
+      ]
+    }
+  ],
+  "benchmarks_needed": []
+}
