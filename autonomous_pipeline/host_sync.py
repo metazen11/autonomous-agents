@@ -320,10 +320,10 @@ def windows_task_command(repo_root: Path, python_bin: str = "python") -> str:
 
 
 def launchd_plist(repo_root: Path, python_bin: str = "python3", label: str = "com.metazen11.autonomous-prompt-pack-sync") -> str:
-    script = repo_root / "scripts" / "sync_prompt_pack.py"
+    script = repo_root / "scripts" / "pull-and-sync.sh"
     log_dir = repo_root / ".runs" / "logs"
-    stdout_path = log_dir / "prompt-pack-sync.log"
-    stderr_path = log_dir / "prompt-pack-sync.err.log"
+    stdout_path = log_dir / "launchd-stdout.log"
+    stderr_path = log_dir / "launchd-stderr.log"
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -334,11 +334,8 @@ def launchd_plist(repo_root: Path, python_bin: str = "python3", label: str = "co
     <string>{repo_root}</string>
     <key>ProgramArguments</key>
     <array>
-      <string>{python_bin}</string>
+      <string>/bin/bash</string>
       <string>{script}</string>
-      <string>sync</string>
-      <string>--repo-root</string>
-      <string>{repo_root}</string>
     </array>
     <key>StartInterval</key>
     <integer>900</integer>
@@ -348,6 +345,11 @@ def launchd_plist(repo_root: Path, python_bin: str = "python3", label: str = "co
     <string>{stdout_path}</string>
     <key>StandardErrorPath</key>
     <string>{stderr_path}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
   </dict>
 </plist>
 """
