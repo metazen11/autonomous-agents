@@ -175,8 +175,10 @@ class RunState:
 
 @dataclass(slots=True)
 class RuntimeConfig:
-    task_source: Literal["todo_json", "github"] = "todo_json"
+    task_source: Literal["todo_json", "github", "file", "prompt"] = "todo_json"
     todo_path: str = "todo.json"
+    task_file: str | None = None
+    prompt_text: str | None = None
     artifacts_dir: str = "artifacts"
     memory_url: str = "http://127.0.0.1:3377"
     github_repo: str | None = None

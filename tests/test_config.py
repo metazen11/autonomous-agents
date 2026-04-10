@@ -39,6 +39,18 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(config.todo_path, "tasks/todo.json")
         self.assertEqual(config.memory_url, "http://x")
 
+    def test_task_file_override_switches_task_source(self) -> None:
+        config = merge_cli_overrides(load_runtime_config("."), task_file="plans/task.md")
+        self.assertEqual(config.task_source, "file")
+        self.assertEqual(config.task_file, "plans/task.md")
+        self.assertIsNone(config.prompt_text)
+
+    def test_prompt_text_override_switches_task_source(self) -> None:
+        config = merge_cli_overrides(load_runtime_config("."), prompt_text="Ship the feature.")
+        self.assertEqual(config.task_source, "prompt")
+        self.assertEqual(config.prompt_text, "Ship the feature.")
+        self.assertIsNone(config.task_file)
+
 
 if __name__ == "__main__":
     unittest.main()

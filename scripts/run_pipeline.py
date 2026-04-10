@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from autonomous_pipeline.adapters.file_task import FileTaskAdapter
 from autonomous_pipeline.adapters.github import GitHubAdapter
 from autonomous_pipeline.adapters.todo_json import TodoJsonAdapter
 from autonomous_pipeline.config import load_runtime_config, merge_cli_overrides
@@ -19,6 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Autonomous pipeline runtime skeleton")
     parser.add_argument("--repo-root", default=".", help="Repository root")
     parser.add_argument("--todo-path", default=None, help="Path to todo.json")
+    parser.add_argument("--task-file", default=None, help="Path to a markdown or text task file")
+    parser.add_argument("--prompt-text", default=None, help="Inline prompt text to treat as the selected task")
     parser.add_argument("--memory-url", default=None, help="agent-memory base URL")
     parser.add_argument("--mode", choices=["dry_run", "full"], default="full")
     parser.add_argument(
@@ -55,6 +58,8 @@ def main() -> int:
     config = merge_cli_overrides(
         load_runtime_config(repo_root),
         todo_path=args.todo_path,
+        task_file=args.task_file,
+        prompt_text=args.prompt_text,
         memory_url=args.memory_url,
     )
     adapter = build_adapter(repo_root, config)
@@ -248,6 +253,12 @@ def main() -> int:
 def build_adapter(repo_root: Path, config) -> object:
     if config.task_source == "todo_json":
         return TodoJsonAdapter(repo_root / config.todo_path)
+    if config.task_source in {"file", "prompt"}:
+        return FileTaskAdapter(
+            repo_root=repo_root,
+            task_file=config.task_file,
+            prompt_text=config.prompt_text,
+        )
     if config.task_source == "github":
         return GitHubAdapter(
             repo_root=repo_root,

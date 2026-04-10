@@ -213,6 +213,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "- Prefer deterministic plans, explicit artifacts, and resumable run state.",
         "- Run `CODE_REVIEW` before `TEST`.",
         "- Enforce DRY, simplification, naming, and style conventions during review.",
+        "- Update docs (README, HANDOFF) and run integration tests as part of every sprint — code without updated docs is not done.",
         "",
         "## Host Capabilities",
         f"- Supported capability tags: {', '.join(spec.capability_tags)}",

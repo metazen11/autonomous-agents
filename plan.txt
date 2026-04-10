@@ -10,15 +10,19 @@ Turn this repository from an agent-agnostic prompt pack into a working autonomou
 - verifies changes before reporting success
 - learns from repeated successful workflows
 - integrates cleanly with the existing agent-memory database and MCP tooling
+- converges cleanly with the existing Anvil execution platform instead of duplicating its runtime surfaces
 
 ## Planning Principles
 
 - productize the runtime without re-coupling the prompts to a single host
+- keep this repository as the canonical workflow/spec layer while converging runtime execution into Anvil where practical
 - support both GitHub Issues and `todo.json` as first-class task systems
 - treat agent-memory validation as a gated dependency because major infrastructure changes already occurred
 - make self-improvement measurable, not aspirational
 - promote proven workflows into scripts and skills instead of storing everything as loose memory
 - keep the runtime cross-operating-system compatible, which means shell can remain a thin export layer but not the core orchestrator
+- stay DRY across API, MCP, CLI, and agent tool layers by reusing shared Python service modules rather than reimplementing logic per interface
+- target production-grade behavior: resumability, typed contracts, deterministic routing, bounded authority, observable artifacts, and graceful degradation
 
 ## Track 0: Prompt Pack Hardening
 
@@ -87,6 +91,21 @@ Turn this repository from an agent-agnostic prompt pack into a working autonomou
   - REPORT
   - IMPROVE
 - Add resumable local state in `.autonomous-state.json`.
+
+### 2.2B Converge runtime ownership with Anvil
+
+- Treat this repository as the canonical workflow/prompt/spec layer.
+- Treat Anvil as the primary execution platform for:
+  - coding-agent runtime
+  - FastAPI service surface
+  - MCP exposure
+  - local tool execution
+  - worker loop and persistent task execution
+- Keep this repository’s runtime as a reference implementation and compatibility harness until Anvil reaches parity.
+- Done when the production path is clear:
+  - prompts and contracts live here
+  - execution and service integration live in Anvil
+  - both systems share schemas and task semantics instead of drifting apart
 
 ### 2.3 Add typed schemas
 
@@ -229,6 +248,45 @@ Turn this repository from an agent-agnostic prompt pack into a working autonomou
 - Merge back after each verified layer
 - One final PR
 
+## Track 5B: Shared Platform And DRY Service Boundaries
+
+### 5B.1 Inventory shared runtime surfaces
+
+- Audit the Anvil codebase and classify current capabilities into:
+  - shared service layer
+  - FastAPI endpoints
+  - MCP tools
+  - CLI commands
+  - in-agent tool registry
+- Explicitly identify where the same concept is exposed more than once.
+- Done when every new capability has a single implementation owner and thin adapters for each interface.
+
+### 5B.2 Define the production-grade layering model
+
+- `core services`
+  - reusable Python modules with typed inputs/outputs
+  - no UI or transport assumptions
+- `transport adapters`
+  - FastAPI
+  - MCP
+  - CLI
+  - agent tool registry
+- `workflow/spec layer`
+  - prompt pack in this repository
+  - contracts for phases, specialists, and handoffs
+- `memory layer`
+  - agent-memory for durable lessons, patterns, and benchmarks
+- Done when each feature can be added once and surfaced everywhere.
+
+### 5B.3 Move duplicate logic behind shared services
+
+- Web retrieval, local search, planning/todos, and task normalization should each have one implementation path.
+- FastAPI handlers should call shared service modules.
+- MCP handlers should call the same shared service modules.
+- CLI commands and slash commands should call the same shared service modules.
+- Agent tools should call the same shared service modules.
+- Done when no feature requires separate business logic for API, MCP, CLI, and tool mode.
+
 ## Track 6: Verification Engine
 
 ### 6.1 Implement command discovery and override policy
@@ -253,6 +311,107 @@ Turn this repository from an agent-agnostic prompt pack into a working autonomou
 - retry once with the most likely fix for transient command issues
 - mark `needs_human` for credential or environment blockers
 - capture failure evidence before stopping
+
+## Track 6B: Planning And Retrieval Harness
+
+### 6B.1 Add first-class planning
+
+- Add a persistent plan/todo model with typed items:
+  - id
+  - title
+  - status
+  - owner
+  - dependencies
+  - notes
+  - acceptance criteria
+- Provide one planning implementation and expose it through:
+  - FastAPI
+  - MCP
+  - CLI slash commands
+  - agent tool calls
+- Add commands and tools analogous to:
+  - `write_todos`
+  - `/plan`
+  - `/todo add`
+  - `/todo done`
+  - `/todo block`
+- Done when planning survives across iterations and can be inspected or updated outside the LLM loop.
+
+### 6B.2 Add cohesive retrieval model
+
+- Local retrieval:
+  - explore workspace tree
+  - search file names
+  - search file contents
+  - search memory
+- Internet retrieval:
+  - search web
+  - fetch URL content
+  - cache/fingerprint fetched results when appropriate
+- Prefer shared service modules over ad hoc tool-only code.
+- Done when Anvil exposes a coherent retrieval surface across agent, CLI, FastAPI, and MCP.
+
+### 6B.3 Enforce retrieval and planning policy
+
+- Search local first for repo-scoped implementation questions.
+- Use memory search before repeating known workflows.
+- Use internet search only when local sources are insufficient or freshness matters.
+- Record web-sourced artifacts separately from local run artifacts.
+- Do not let web retrieval bypass security, provenance, or artifact capture rules.
+
+## Track 6C: Production-Grade Coding Agent In Anvil
+
+### 6C.1 Harden the coding harness
+
+- Keep the interactive harness as the primary operator interface.
+- Maintain adjustable runtime controls:
+  - context window
+  - max tokens
+  - temperature
+  - tool caps
+  - model selection
+- Add simple presets plus explicit overrides.
+- Done when the harness is robust for long-running coding sessions and recoverable from model/runtime faults.
+
+### 6C.2 Expand the tool surface safely
+
+- Keep:
+  - file read/write/edit
+  - bash execution
+  - local search
+  - memory search
+- Add:
+  - planning/todos
+  - web search
+  - URL fetch
+  - delegated subtask execution when bounded
+- Preserve:
+  - workspace confinement
+  - secret protection
+  - command denylist
+  - explicit tool/result truncation controls
+- Done when Anvil can match the useful planning and retrieval ergonomics of stronger coding agents without weakening safety.
+
+### 6C.3 Route autonomous execution through the pipeline
+
+- Use the autonomous phase model:
+  - INIT
+  - PICK
+  - PLAN
+  - DEV
+  - CODE_REVIEW
+  - TEST
+  - REVIEW
+  - PR
+  - REPORT
+  - IMPROVE
+- Map those phases to Anvil runtime nodes and transport surfaces.
+- Keep branch ownership, write scope, and merge authority explicit.
+- Done when the same workflow can run from:
+  - CLI
+  - FastAPI
+  - MCP
+  - host-integrated prompt pack
 
 ## Track 7: Continuous Improvement Engine
 
@@ -337,6 +496,36 @@ This is the operational loop that lets the system improve its own productivity i
 - add benchmarks
 - add tests and fixtures
 
+### Phase E
+
+- converge runtime ownership with Anvil
+- formalize shared service boundaries for FastAPI, MCP, CLI, and tool registry
+- implement first-class planning and retrieval
+- validate end-to-end autonomous execution through Anvil
+
+## Immediate Production Workstream
+
+1. Audit Anvil’s current shared service, FastAPI, MCP, CLI, and tool boundaries.
+2. Define the canonical shared-service interfaces for:
+   - planning
+   - local search
+   - memory search
+   - web search
+   - URL fetch
+   - task normalization
+3. Implement planning as a shared service first, then expose it through:
+   - agent tool
+   - CLI slash commands
+   - FastAPI
+   - MCP
+4. Implement internet retrieval the same way:
+   - shared service
+   - agent tool
+   - FastAPI
+   - MCP
+5. Integrate the autonomous phase model into Anvil’s worker routing.
+6. Run end-to-end fixture and live-repo validation on the production path.
+
 ## Immediate Next Issues To Create In GitHub
 
 1. `Bootstrap orchestrator runtime and schemas`
@@ -369,3 +558,5 @@ This project reaches its next meaningful state when:
 - agent-memory integration is verified against the current architecture
 - the runtime can complete at least one fixture task end to end
 - the system can identify and track at least one workflow it should automate after observing repeated manual repetition
+- Anvil exposes production-grade planning and retrieval through shared services rather than duplicated interface-specific logic
+- the same planning/retrieval/autonomous workflow can be invoked consistently from CLI, FastAPI, MCP, and host-integrated agent usage
