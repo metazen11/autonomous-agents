@@ -122,18 +122,23 @@ def main() -> int:
     for target in targets:
         status = check_target(repo_root, target)
         agents_status = "ok" if not status.missing_agents else ",".join(status.missing_agents)
+        schemas_status = "n/a" if status.missing_schemas is None else ("ok" if not status.missing_schemas else ",".join(status.missing_schemas))
+        scripts_status = "n/a" if status.missing_scripts is None else ("ok" if not status.missing_scripts else ",".join(status.missing_scripts))
         skill_status = format_status(status.skill_in_sync)
         instructions_status = format_status(status.instructions_in_sync)
         config_status = format_status(status.config_snippet_in_sync)
         print(
             f"{target.name}: skill={skill_status} instructions={instructions_status} "
-            f"config={config_status} agents={agents_status}"
+            f"config={config_status} agents={agents_status} "
+            f"schemas={schemas_status} scripts={scripts_status}"
         )
         if (
             status.skill_in_sync is False
             or status.instructions_in_sync is False
             or status.config_snippet_in_sync is False
             or status.missing_agents
+            or status.missing_schemas
+            or status.missing_scripts
         ):
             failed = True
     return 1 if failed else 0
