@@ -261,6 +261,17 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
                 "",
             ]
         )
+    elif target.name == "anvil":
+        lines.extend(
+            [
+                "## Anvil Notes",
+                "- Anvil is the production execution platform for the autonomous pipeline.",
+                "- Use Anvil's local tool system, MCP server, and FastAPI surface to expose planning, retrieval, and specialist services.",
+                "- Treat this file as the global execution contract and the synced prompt pack as the specialist library.",
+                "- Anvil supports local skills, tools, and self-extension; use those for quality gate automation and workflow promotion.",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
