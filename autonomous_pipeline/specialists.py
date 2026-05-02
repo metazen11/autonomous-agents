@@ -727,6 +727,35 @@ def _execute_bounded_fixer(
     )
 
 
+def _execute_quality_gate(
+    contract: SpecialistContract,
+    artifacts_root: Path,
+    task: Task,
+) -> AgentResult:
+    summary = (
+        "Quality gate review requires an LLM agent to produce structured JSON output. "
+        "Run this specialist through a host agent (Claude, Codex, Gemini, Anvil) with the "
+        "quality-gate prompt and validate the output with scripts/validate_quality_gate.py."
+    )
+    artifact_path = _write_artifact(
+        artifacts_root,
+        contract.name,
+        {
+            "status": "needs_human",
+            "summary": summary,
+            "task_id": task.id,
+            "task_title": task.title,
+            "note": "Automated execution requires LLM agent invocation. Use the quality-gate specialist prompt.",
+        },
+    )
+    return AgentResult(
+        agent_name=contract.name,
+        status="needs_human",
+        summary=summary,
+        artifacts=[artifact_path],
+    )
+
+
 def _write_artifact(artifacts_root: Path, specialist_name: str, payload: dict) -> str:
     artifacts_root.mkdir(parents=True, exist_ok=True)
     artifact_path = artifacts_root / f"{specialist_name}-result.json"
