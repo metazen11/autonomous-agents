@@ -314,6 +314,17 @@ def render_host_config_snippet(repo_root: Path, target: HostTarget) -> str:
             "  }\n"
             "}\n"
         )
+    if target.name == "anvil":
+        return (
+            "{\n"
+            '  "mcpServers": {\n'
+            '    "agent-memory": {\n'
+            '      "command": "/path/to/agentMemory/.venv/bin/python",\n'
+            '      "args": ["/path/to/agentMemory/mcp_server.py"]\n'
+            "    }\n"
+            "  }\n"
+            "}\n"
+        )
     return ""
 
 
