@@ -84,6 +84,8 @@ class SyncStatus:
     instructions_in_sync: bool | None = None
     config_snippet_in_sync: bool | None = None
     missing_agents: list[str] | None = None
+    missing_schemas: list[str] | None = None
+    missing_scripts: list[str] | None = None
 
 
 def repo_skill_source(repo_root: Path) -> Path:
