@@ -225,6 +225,22 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
         expected = render_host_config_snippet(repo_root, target)
         config_snippet_in_sync = target.config_snippet_path.exists() and target.config_snippet_path.read_text() == expected
 
+    missing_schemas: list[str] | None = None
+    if target.schemas_dir:
+        missing_schemas = []
+        for source in repo_schema_sources(repo_root):
+            target_file = target.schemas_dir / source.name
+            if not target_file.exists() or sha256_file(source) != sha256_file(target_file):
+                missing_schemas.append(source.name)
+
+    missing_scripts: list[str] | None = None
+    if target.scripts_dir:
+        missing_scripts = []
+        for source in repo_script_sources(repo_root):
+            target_file = target.scripts_dir / source.name
+            if not target_file.exists() or sha256_file(source) != sha256_file(target_file):
+                missing_scripts.append(source.name)
+
     return SyncStatus(
         host=target.name,
         configured=True,
@@ -232,6 +248,8 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
         instructions_in_sync=instructions_in_sync,
         config_snippet_in_sync=config_snippet_in_sync,
         missing_agents=missing_agents,
+        missing_schemas=missing_schemas,
+        missing_scripts=missing_scripts,
     )
 
 
