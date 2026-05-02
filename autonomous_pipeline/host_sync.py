@@ -46,6 +46,12 @@ HOST_SPECS = {
         instruction_filename="AGENTS.md",
         capability_tags=("instructions", "todo", "local-runtime"),
     ),
+    "anvil": HostSpec(
+        name="anvil",
+        instruction_filename="AGENTS.md",
+        capability_tags=("instructions", "mcp", "todo", "memory", "skills", "tools", "local-runtime"),
+        config_format="json",
+    ),
 }
 
 
