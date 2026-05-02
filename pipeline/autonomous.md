@@ -220,6 +220,17 @@ Required decomposition format:
 
 Parallel work is allowed only when write scopes do not overlap.
 
+For non-trivial tasks, invoke the `quality-gate` specialist on the plan output before proceeding to DEV:
+
+- The quality gate reviews the plan against production engineering standards.
+- It produces structured JSON validated against `schemas/quality-gate-output.schema.json`.
+- Run `scripts/validate_quality_gate.py` on the output to enforce schema and business rules.
+- If the verdict is `blocked`, stop and report the block reason.
+- If the verdict is `needs_refinement`, address the identified gaps before DEV.
+- Save the output to `plans/{task-id}-quality-gate.json`.
+
+The quality gate is optional for trivial tasks (typo fixes, single-line changes) but recommended for any task that touches multiple files, adds new features, changes APIs, modifies infrastructure, or affects security.
+
 ### 3. DEV
 
 - Create or switch to a task branch.
