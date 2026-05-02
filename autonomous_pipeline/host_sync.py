@@ -168,6 +168,23 @@ def sync_target(repo_root: Path, target: HostTarget) -> None:
         for source in repo_agent_sources(repo_root):
             (target.agents_dir / source.name).write_text(source.read_text())
 
+    if target.schemas_dir:
+        target.schemas_dir.mkdir(parents=True, exist_ok=True)
+        schema_sources = repo_schema_sources(repo_root)
+        source_names = {s.name for s in schema_sources}
+        for target_file in target.schemas_dir.glob("*.json"):
+            if target_file.name not in source_names:
+                target_file.unlink()
+        for source in schema_sources:
+            (target.schemas_dir / source.name).write_text(source.read_text())
+
+    if target.scripts_dir:
+        target.scripts_dir.mkdir(parents=True, exist_ok=True)
+        for source in repo_script_sources(repo_root):
+            dest = target.scripts_dir / source.name
+            dest.write_text(source.read_text())
+            dest.chmod(0o755)
+
     if target.instructions_path:
         target.instructions_path.parent.mkdir(parents=True, exist_ok=True)
         target.instructions_path.write_text(render_host_instructions(repo_root, target))
