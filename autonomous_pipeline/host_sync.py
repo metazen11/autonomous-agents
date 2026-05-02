@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-HOST_NAMES = ("claude", "codex", "gemini", "cursor", "openclaw")
+HOST_NAMES = ("claude", "codex", "gemini", "cursor", "openclaw", "anvil")
 
 
 @dataclass(frozen=True, slots=True)
