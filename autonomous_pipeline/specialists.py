@@ -227,6 +227,8 @@ def execute_specialist(
         return _execute_bounded_fixer(contract, artifacts_root_path, task, domain="security")
     if name == "compliance-fixer":
         return _execute_bounded_fixer(contract, artifacts_root_path, task, domain="compliance")
+    if name == "quality-gate":
+        return _execute_quality_gate(contract, artifacts_root_path, task)
     if name == "skill-promoter":
         return _execute_skill_promoter(contract, artifacts_root_path, task, config)
 
