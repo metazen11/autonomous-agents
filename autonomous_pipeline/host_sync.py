@@ -96,6 +96,24 @@ def repo_agent_sources(repo_root: Path) -> list[Path]:
     return sorted((repo_root / "agents").glob("*.md"))
 
 
+def repo_schema_sources(repo_root: Path) -> list[Path]:
+    schemas_dir = repo_root / "schemas"
+    if not schemas_dir.is_dir():
+        return []
+    return sorted(schemas_dir.glob("*.json"))
+
+
+# Scripts that should be synced to host targets (validation tools, not repo-internal tooling).
+_SYNCABLE_SCRIPTS = ("validate_quality_gate.py",)
+
+
+def repo_script_sources(repo_root: Path) -> list[Path]:
+    scripts_dir = repo_root / "scripts"
+    if not scripts_dir.is_dir():
+        return []
+    return [scripts_dir / name for name in _SYNCABLE_SCRIPTS if (scripts_dir / name).exists()]
+
+
 def load_dotenv(dotenv_path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not dotenv_path.exists():
