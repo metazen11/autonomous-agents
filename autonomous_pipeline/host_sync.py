@@ -222,6 +222,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "- Update docs (CHANGELOG, CLAUDE.md, ARCHITECTURE, AGENTS.md, HANDOFF, E2E demo) as part of every sprint — code without updated docs is not done.",
         "- **Post-sprint self-improvement is MANDATORY:** every sprint ends with documentation updates, new skills/tools for recurring workflows, memory notes for lessons learned, and a quality gate audit on shipped code.",
         "- **Plans require senior production review:** before approving any non-trivial plan, run a quality gate checking security, compliance, edge cases, failure modes, rollback, testable acceptance criteria, and observability.",
+        "- **Quality gate for non-trivial plans:** invoke the `quality-gate` specialist and validate output with `scripts/validate_quality_gate.py` before implementation. Schema: `schemas/quality-gate-output.schema.json`.",
         "- Omit `Co-Authored-By` lines from commits and PRs.",
         "",
         "## Host Capabilities",
