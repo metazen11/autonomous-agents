@@ -62,12 +62,17 @@ class HostTarget:
     agents_dir: Path | None = None
     instructions_path: Path | None = None
     config_snippet_path: Path | None = None
+    schemas_dir: Path | None = None
+    scripts_dir: Path | None = None
 
     @property
     def configured(self) -> bool:
         return any(
             value is not None
-            for value in (self.skill_path, self.agents_dir, self.instructions_path, self.config_snippet_path)
+            for value in (
+                self.skill_path, self.agents_dir, self.instructions_path,
+                self.config_snippet_path, self.schemas_dir, self.scripts_dir,
+            )
         )
 
 
