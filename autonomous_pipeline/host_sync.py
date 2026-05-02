@@ -138,12 +138,16 @@ def discover_targets(repo_root: Path, env: dict[str, str]) -> list[HostTarget]:
         agents_dir = env.get(f"{prefix}_AGENTS_DIR")
         instructions_path = env.get(f"{prefix}_INSTRUCTIONS_PATH")
         config_snippet_path = env.get(f"{prefix}_CONFIG_SNIPPET_PATH")
+        schemas_dir = env.get(f"{prefix}_SCHEMAS_DIR")
+        scripts_dir = env.get(f"{prefix}_SCRIPTS_DIR")
         target = HostTarget(
             name=host,
             skill_path=Path(skill_path) if skill_path else None,
             agents_dir=Path(agents_dir) if agents_dir else None,
             instructions_path=Path(instructions_path) if instructions_path else None,
             config_snippet_path=Path(config_snippet_path) if config_snippet_path else None,
+            schemas_dir=Path(schemas_dir) if schemas_dir else None,
+            scripts_dir=Path(scripts_dir) if scripts_dir else None,
         )
         if not target.configured:
             continue
