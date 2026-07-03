@@ -67,6 +67,8 @@ agent_contract:
   Bounded write. May only remediate explicit findings inside explicit write scope.
 - `promoter`
   Read-only relative to repo code. May create memory entries and follow-up tasks.
+- `quality_gate`
+  Read-only. Reviews plans and issues for production readiness. Produces structured JSON output validated against `schemas/quality-gate-output.schema.json`. Blocks vague, unsafe, or incomplete work from reaching implementation.
 
 ### Repo Management Rules
 

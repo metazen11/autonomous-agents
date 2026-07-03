@@ -74,5 +74,94 @@ class GitHubAdapterNormalizationTest(unittest.TestCase):
         self.assertEqual(issue_id, "99")
 
 
+class GitHubAdapterCreateItemTest(unittest.TestCase):
+    """Verify create_item builds the correct gh issue create invocation."""
+
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.args_log = Path(self.tmpdir.name) / "args.json"
+        self.script_path = Path(self.tmpdir.name) / "fake_gh_create.py"
+        # Script writes received args to args_log, then returns a fixed response.
+        self.script_path.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json, sys",
+                    "args = sys.argv[1:]",
+                    f"open({str(self.args_log)!r}, 'w').write(json.dumps(args))",
+                    "if args[:2] == ['issue', 'create']:",
+                    # Real `gh issue create` prints the new issue URL on stdout;
+                    # it does not support --json. Match that contract.
+                    "    print('https://github.com/acme/widgets/issues/42')",
+                    "else:",
+                    "    raise SystemExit('unsupported: ' + ' '.join(args))",
+                ]
+            )
+            + "\n"
+        )
+        self.script_path.chmod(0o755)
+        self.adapter = GitHubAdapter(
+            repo_root=self.tmpdir.name,
+            gh_command=["python3", str(self.script_path)],
+        )
+
+    def tearDown(self) -> None:
+        self.tmpdir.cleanup()
+
+    def test_create_item_returns_number_and_url(self) -> None:
+        number, url = self.adapter.create_item(
+            title="My task",
+            body="intent text",
+            criteria=["crit one", "crit two"],
+            labels=["lane:etl", "priority:high"],
+        )
+        self.assertEqual(number, "42")
+        self.assertEqual(url, "https://github.com/acme/widgets/issues/42")
+        # Regression guard: `gh issue create` must NOT be called with --json,
+        # which the real CLI rejects as an unknown flag.
+        args = json.loads(self.args_log.read_text())
+        self.assertNotIn("--json", args)
+
+    def test_create_item_includes_criteria_as_checklist_in_body(self) -> None:
+        self.adapter.create_item(
+            title="My task",
+            body="intent text",
+            criteria=["crit one", "crit two"],
+            labels=["lane:etl"],
+        )
+        args = json.loads(self.args_log.read_text())
+        # Locate the --body value
+        body_idx = args.index("--body")
+        body_value = args[body_idx + 1]
+        self.assertIn("- [ ] crit one", body_value)
+        self.assertIn("- [ ] crit two", body_value)
+
+    def test_create_item_passes_labels_via_flag(self) -> None:
+        self.adapter.create_item(
+            title="My task",
+            body="intent",
+            criteria=[],
+            labels=["lane:etl", "priority:high"],
+        )
+        args = json.loads(self.args_log.read_text())
+        # Each label must appear as --label <value>
+        label_values = [args[i + 1] for i, a in enumerate(args) if a == "--label"]
+        self.assertIn("lane:etl", label_values)
+        self.assertIn("priority:high", label_values)
+
+    def test_create_item_no_criteria_omits_checklist(self) -> None:
+        self.adapter.create_item(
+            title="My task",
+            body="intent only",
+            criteria=[],
+            labels=[],
+        )
+        args = json.loads(self.args_log.read_text())
+        body_idx = args.index("--body")
+        body_value = args[body_idx + 1]
+        self.assertNotIn("- [ ]", body_value)
+        self.assertEqual(body_value, "intent only")
+
+
 if __name__ == "__main__":
     unittest.main()

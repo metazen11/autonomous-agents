@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "description": "Repo-level task list for autonomous-agents (prompt-pack source). Tasks here are scoped to platform infrastructure, not to any individual project that consumes the pack.",
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Migrate prompt-pack source out of ~/Dropbox/_CODING/ → ~/_CODING/",
+      "status": "open",
+      "priority": "high",
+      "source": "github",
+      "source_url": "https://github.com/metazen11/autonomous-agents/issues/11",
+      "created": "2026-05-21",
+      "owner": "mz@wfca.com",
+      "description": "~/_CODING/autonomous_agents_mds/ and ~/Dropbox/_CODING/autonomous_agents_mds/ exist as two separate editable working trees (different inodes, identical content today). Decommission the Dropbox copy. Same applies to ~/Dropbox/_CODING/hooks/ vs ~/_CODING/hooks/. Audit and fix every Dropbox reference in ~/.claude/CLAUDE.md, sync_prompt_pack.py, and the AGENTS.md template.",
+      "acceptance_criteria": [
+        "grep -rn 'Dropbox/_CODING' ~/.claude/ ~/_CODING/autonomous_agents_mds/ returns zero results",
+        "~/Dropbox/_CODING/autonomous_agents_mds/ either deleted or marked read-only",
+        "sync_prompt_pack.py runs cleanly from ~/_CODING/autonomous_agents_mds/",
+        "Distributed projects have their Dropbox references replaced on next sync"
+      ],
+      "fold_in_files": [
+        "AGENTS.md.template — seeded 2026-05-21 from psde_mz_test/AGENTS.md with new § 0 session-handoff rule; left dirty intentionally to be folded into this migration sweep's PR rather than landed standalone",
+        "todo.json — this file; seeded 2026-05-21; commit alongside the migration sweep so the task list lives on disk in the repo from sweep onward"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Distribute AGENTS.md.template via sync_prompt_pack.py",
+      "status": "open",
+      "priority": "medium",
+      "source": "todo_json",
+      "created": "2026-05-21",
+      "owner": "mz@wfca.com",
+      "description": "AGENTS.md.template was seeded in this repo on 2026-05-21 from psde_mz_test/AGENTS.md plus the new § 0 session-handoff rule. sync_prompt_pack.py does not currently distribute AGENTS.md — extend it to write AGENTS.md to each target project (or merge into existing AGENTS.md if one exists). This closes the 'cross-project enforcement' intent stated in the file header.",
+      "acceptance_criteria": [
+        "sync_prompt_pack.py has an --install-agents-md mode or equivalent",
+        "Running sync against psde_mz_test produces an AGENTS.md that contains § 0",
+        "Existing project AGENTS.md files are merged, not blindly overwritten"
+      ]
+    }
+  ]
+}

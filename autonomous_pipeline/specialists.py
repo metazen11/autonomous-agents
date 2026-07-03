@@ -141,6 +141,35 @@ SPECIALIST_CONTRACTS: dict[str, SpecialistContract] = {
         output_keys=["status", "summary", "changes", "tests_run", "rollback", "residual_risks"],
         escalation_conditions=["required file outside write scope"],
     ),
+    "quality-gate": SpecialistContract(
+        name="quality-gate",
+        prompt_file="agents/quality-gate.md",
+        mode="read_only",
+        responsibilities=[
+            "production plan review",
+            "engineering quality gate",
+            "gap identification",
+            "plan refinement",
+            "acceptance criteria validation",
+            "security and compliance review",
+        ],
+        required_inputs=["task_id", "task_title", "task_body"],
+        optional_inputs=["acceptance_criteria", "source_url", "changed_files", "repo_rules"],
+        output_keys=[
+            "status",
+            "summary",
+            "verdict",
+            "gaps_found",
+            "refined_plan",
+            "acceptance_criteria",
+            "testing_plan",
+            "security_review",
+            "edge_cases",
+            "failure_modes",
+            "improvements",
+        ],
+        escalation_conditions=["plan is unsafe without clarification", "missing critical task context"],
+    ),
     "skill-promoter": SpecialistContract(
         name="skill-promoter",
         prompt_file="agents/skill-promoter.md",
@@ -198,6 +227,8 @@ def execute_specialist(
         return _execute_bounded_fixer(contract, artifacts_root_path, task, domain="security")
     if name == "compliance-fixer":
         return _execute_bounded_fixer(contract, artifacts_root_path, task, domain="compliance")
+    if name == "quality-gate":
+        return _execute_quality_gate(contract, artifacts_root_path, task)
     if name == "skill-promoter":
         return _execute_skill_promoter(contract, artifacts_root_path, task, config)
 
@@ -692,6 +723,35 @@ def _execute_bounded_fixer(
         summary=summary,
         findings=findings,
         evidence=allowed_write_scope,
+        artifacts=[artifact_path],
+    )
+
+
+def _execute_quality_gate(
+    contract: SpecialistContract,
+    artifacts_root: Path,
+    task: Task,
+) -> AgentResult:
+    summary = (
+        "Quality gate review requires an LLM agent to produce structured JSON output. "
+        "Run this specialist through a host agent (Claude, Codex, Gemini, Anvil) with the "
+        "quality-gate prompt and validate the output with scripts/validate_quality_gate.py."
+    )
+    artifact_path = _write_artifact(
+        artifacts_root,
+        contract.name,
+        {
+            "status": "needs_human",
+            "summary": summary,
+            "task_id": task.id,
+            "task_title": task.title,
+            "note": "Automated execution requires LLM agent invocation. Use the quality-gate specialist prompt.",
+        },
+    )
+    return AgentResult(
+        agent_name=contract.name,
+        status="needs_human",
+        summary=summary,
         artifacts=[artifact_path],
     )
 

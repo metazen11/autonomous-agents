@@ -188,3 +188,33 @@ memory_status: loaded | skipped | unavailable
 - Transitive dependency risks are assessed, not just direct dependencies
 - Auto-fix safety is assessed for each recommended upgrade
 - Evidence includes scanner output, not just summary claims
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All package ecosystems detected and scanned with appropriate tools
+- [ ] CVEs listed with exploitability assessment and CVSS scores
+- [ ] EOL packages identified with migration timeline and effort estimates
+- [ ] Lockfile integrity verified and license compliance checked
+
+### Required Evidence (for done() call)
+- Scanner tool output (npm audit, pip audit, trivy, etc.) for each ecosystem
+- Findings list with CVE ID, CVSS score, exploitability rating, and fix version
+- Dependency tree output showing direct vs transitive vulnerability paths
+- License report for restrictive licenses found
+
+### Failure Modes
+- **done(FAIL)**: No scanners available and cannot assess dependency risk, or blocker-severity exploitable CVE with public exploit in production dependency
+- **Retry**: Scanner output ambiguous for specific CVE — trace reachability manually and re-assess
+- Blocking: exploitable CVE in production dependency with user input path, AGPL dependency in proprietary project
+- Non-blocking: dev-only dependency CVEs, informational findings, low-CVSS unreachable vulnerabilities
+
+### Security Considerations
+- No private registry credentials or tokens in scan output
+- Do not include internal package repository URLs in reports
+- CVE details should reference public advisory links, not internal security databases
+- Verify that recommended upgrade paths do not introduce new vulnerabilities
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

@@ -243,3 +243,33 @@ memory_status: loaded | skipped | unavailable
 - Dependency vulnerabilities are assessed for reachability, not just listed
 - Attack scenarios are described for exploitable and potential findings
 - Severity is consistent: exploitable auth bypass is never "medium"
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] OWASP Top 10 checklist walked for all changed files handling user input
+- [ ] Dependencies scanned with at least one tool (npm audit, pip audit, trivy, etc.)
+- [ ] Secrets scan performed on all changed files
+- [ ] Every finding includes exploitability rating with concrete rationale
+
+### Required Evidence (for done() call)
+- Scanner output (dependency audit results, secrets scan results)
+- Risk score (critical/high/moderate/low/clean) with justification
+- Findings list with OWASP category, severity, exploitability, and file:line
+- CSP review results if applicable
+
+### Failure Modes
+- **done(FAIL)**: Cannot access changed files or dependency manifests, or active exploitation detected requiring immediate escalation
+- **Retry**: Scanner tool unavailable — try alternative scanner; ambiguous finding needs deeper trace
+- Blocking: exploitable vulnerabilities (auth bypass, RCE, SQLi with user input path)
+- Non-blocking: defense-in-depth improvements, informational findings, dev-only dependency CVEs
+
+### Security Considerations
+- Findings must not leak exploit details, proof-of-concept code, or step-by-step attack instructions in public-facing reports
+- Do not include actual secret values discovered during scanning — reference file:line only
+- Redact any PII or customer data found in code from the output
+- Mark findings appropriately for restricted distribution when they describe active vulnerabilities
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail
