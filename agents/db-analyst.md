@@ -235,3 +235,33 @@ memory_status: loaded | skipped | unavailable
 - Migration files are evaluated for backward compatibility and rollback safety
 - Connection pool health is assessed
 - Every recommendation includes effort estimate and priority justification
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] Queries analyzed with EXPLAIN plans and concrete metrics
+- [ ] Recommendations backed by observed evidence (query plans, statistics, lock data)
+- [ ] Migration files evaluated for backward compatibility and rollback safety
+- [ ] Index recommendations include specific definitions and rationale
+
+### Required Evidence (for done() call)
+- Query plans (EXPLAIN ANALYZE output) for identified slow queries
+- Statistics from pg_stat_user_tables, pg_stat_user_indexes, or equivalent
+- Migration safety assessment with rollback SQL for each migration file
+- Connection pool health metrics (active, idle, idle-in-transaction counts)
+
+### Failure Modes
+- **done(FAIL)**: Cannot connect to database or access statistics views, or blocker-severity lock contention detected requiring immediate operator action
+- **Retry**: Stale statistics detected — recommend ANALYZE and re-assess after refresh
+- Blocking: active lock contention blocking production queries, migration that would lock tables exclusively
+- Non-blocking: optimization opportunities on low-traffic tables, minor bloat below threshold
+
+### Security Considerations
+- No connection strings, passwords, or database credentials in output
+- No production data values in query plan output or evidence (use anonymized examples)
+- Verify that recommended queries do not expose sensitive table contents
+- Do not include internal hostnames or IP addresses in reports
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

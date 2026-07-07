@@ -1,331 +1,132 @@
 ---
 name: autonomous-pipeline
-description: "Agent-agnostic orchestration prompt for autonomous software delivery. Pulls a task, plans, implements, verifies, reviews, and reports with explicit completion gates and structured outputs."
+description: "Thin wrapper that invokes the working composition of focused skills (/reconcile, /improve, /sprint-close, /autonomous-drain when present) under iron-rule preconditions. Replaces the prior monolithic spec — see reports/2026-05-24-autonomous-skill-audit.md for context."
 ---
 
-# Autonomous Pipeline Orchestrator
+# Autonomous Pipeline Orchestrator (thin wrapper)
 
-This prompt defines the orchestration policy for a multi-agent software delivery pipeline. It is host-agnostic and expects the runtime to provide task access, command execution, optional memory integration, and optional sub-agent execution.
+This skill is a thin orchestrator that runs the project's working composition of focused skills in sequence, under explicit iron-rule preconditions. It does NOT redefine the pipeline — it sequences the skills that already implement it.
 
-Use the shared contract guide that is co-installed with the specialist prompts before invoking workers.
+For the host-agnostic abstract spec (useful for Codex / Gemini / Anvil installs that don't have the project skills), see `pipeline/autonomous-spec-host-agnostic.md` (preserved for portability).
 
-## Pipeline Goal
+## What this wrapper actually does
 
-Take one task from intake to verified delivery through this sequence:
-
-`INIT -> PICK -> PLAN -> DEV -> CODE_REVIEW -> TEST -> REVIEW -> PR -> REPORT -> IMPROVE`
-
-A task is not complete after code generation. Delivery requires evidence from verification and a final reporting step.
-
-## Required Runtime Capabilities
-
-The host orchestrator should provide:
-
-- repository command execution
-- task source access
-- optional parallel specialist agents
-- persistent run state
-- artifact capture
-- optional memory integration
-- optional GitHub Issues and pull request integration
-
-Host-specific instruction entrypoints such as `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` should all map back to this same orchestration policy rather than diverging into separate workflows.
-
-## Session State
-
-Track this state for every run:
-
-```yaml
-session:
-  session_id: string
-  started_at: timestamp
-  repo_root: string
-  original_branch: string
-  target_branch: string
-  mode: dry_run | full
-  max_tasks: integer
-  completed_tasks: []
-  failed_tasks: []
-  skipped_tasks: []
+```
+PRECONDITIONS → DRAIN → IMPROVE → CLOSE
 ```
 
-Track this state for every task:
+| Phase | Skill invoked | What it does |
+|---|---|---|
+| **PRECONDITIONS** | (inline checks) | PRODUCT_VISION.md read, REPO_INDEX.json consulted, runaway-detector clean, reconcile-lock available, working branch safe |
+| **DRAIN** | `/autonomous-drain LABEL=<arg>` (issue #721 — promote N-lane drain pattern to a skill; until then, drive the N-lane composition inline per CLAUDE.md § Drain-the-Queue) | N-lane orchestration: tester+filer / fixer+reconciler / auditor. Pipeline ends when the labeled queue is empty for 5 consecutive polls AND auditor backlog drained. |
+| **IMPROVE** | `/improve` | 8-dimension CTO scorecard + top 3 fixes. Mandatory post-sprint per CLAUDE.md. |
+| **CLOSE** | `/sprint-close` | Update CHANGELOG, CLAUDE.md, ARCHITECTURE.md, AGENTS.md, HANDOFF.md, E2E_DEMO.md, etc. |
 
-```yaml
-task_run:
-  task_id: string
-  source: github | asana | linear | todo_json | file | other
-  issue_url: string
-  branch_name: string
-  current_phase: string
-  changed_files: []
-  allowed_write_scope: []
-  assigned_agents: []
-  artifacts: []
-  blockers: []
-  status: pending | in_progress | success | failed | needs_human
+## Trigger
+
+Invoke when the operator says any of: "run the full pipeline", "autonomous run on `<label>`", "drain `<label>` then improve and close", or types `/autonomous <label>`.
+
+Do NOT invoke for: single-task delivery (use the composition directly), exploratory work, refactors without a queue, or anything that doesn't fit a labeled-issue queue.
+
+## Iron Rule Preconditions (NON-NEGOTIABLE)
+
+Before any phase runs, verify ALL of these. A failure stops the wrapper with `needs_human`.
+
+1. **PRODUCT_VISION.md has been read this session.** CLAUDE.md line 20 calls this a hard precondition; the wrapper must not skip it.
+2. **REPO_INDEX.json is fresh.** `make index --check` exit 0, OR regenerated within the last 10 commits. CLAUDE.md line 21.
+3. **Runaway-subagent detector is clean.** `scripts/detect_runaway_subagents.sh 5` exits 0. If non-zero, follow `docs/runbooks/runaway-subagent.md` BEFORE proceeding.
+4. **Reconcile lock available or owned by us.** `scripts/reconcile_lock.sh status` either reports `(no lock)` or a stale-PID entry the wrapper can clear via re-acquire.
+5. **Working branch is safe.** Not the production trunk, not the integration trunk; clean tree (no uncommitted changes); no in-progress rebase.
+6. **`make start --check` exit 0.** Dependencies + env are sane. Doesn't change state.
+7. **`gh auth status` shows the expected account.** For `metazen11/psde-os` work, account must be `metazen11`, NOT `wfca-mz` (which lacks repo visibility — see memory `reference_gh_auth.md`).
+
+If any precondition fails: write the failure to `plans/autonomous-precondition-failure-<ts>.json`, comment the cause on any related issue, exit `needs_human`.
+
+## Iron Rule: branching contract
+
+This wrapper MUST NOT open PRs. The branching contract in CLAUDE.md says PRs are only for `integration-trunk → production-trunk` (`develop → main`), human-reviewed. The `reconcile-gate` hook will refuse non-conforming `gh pr create` calls.
+
+The wrapper's only path to integration is `/reconcile` (invoked inside `/autonomous-drain` Lane B per issue #721). Replace any "open a PR" language from prior versions of this skill with "run `/reconcile`."
+
+## Iron Rule: worktree isolation
+
+Every Lane A / Lane B / Lane C dispatched by `/autonomous-drain` runs in `.claude/worktrees/agent-<id>/`. The global `worktree-write-guard` hook (`~/.claude/hooks/worktree-write-guard.js`) actively blocks writes to paths outside the lane's worktree. This is enforcement, not advisory. See `reports/2026-05-24-runaway-subagent-postmortem.md` for the incident that drove this.
+
+## Iron Rule: GitHub-as-queue
+
+Queue state lives in `gh issue list --label <prefix>`. No side-channels (`/tmp/queue.json`, in-prompt task lists, etc.). Operator interrupts are lossless because the queue is in `gh`, not in a process. CLAUDE.md § Drain-the-Queue invariant 3.
+
+## Autonomous-mode default: do not pause for confirmation
+
+When the wrapper is invoked under `/autonomous`, productivity does NOT stop for "are you sure?" prompts. The operator is *informed* via one status line per phase transition — never asked. Stops happen only on:
+
+- runaway detector non-zero
+- reconcile lock held > 30 min by a dead PID after one stale-clear attempt
+- Lane C reopens > 50% of closures in a window (Lane B fundamentally broken — abort and report)
+- explicit `needs_human` from a lane
+
+Anything else is sub-issue + push-through. The operator can interrupt at any time; pipeline resumes from `gh` state.
+
+## Invocation
+
+```bash
+/autonomous LABEL=airbyte-e2e:           # drain the airbyte-e2e: queue, then improve, then close
+/autonomous LABEL=connector-dod:         # drain the connector definition-of-done queue
+/autonomous LABEL=cto-improve-2026-05    # drain a /improve finding batch
+/autonomous LABEL=demo-blocker:          # drain demo-blocker triage
 ```
 
-## Agent Responsibility Model
+Lane budget defaults: Lane B closes ≤5 issues per dispatch, then re-dispatches. Lane C audits all closures in its window per dispatch. Override via `LANE_BUDGET=<n>`.
 
-Every host should assign explicit operational responsibilities before invoking specialists.
+## Pseudocode (the actual contract)
 
-### Orchestrator
+```
+fn /autonomous(label):
+    # PRECONDITIONS
+    for check in [product_vision_read, repo_index_fresh, runaway_clean,
+                  lock_available, branch_safe, make_start_check, gh_auth_correct]:
+        if not check(): exit needs_human
 
-- Owns task pickup, branch strategy, run state, artifact capture, commit sequencing, PR creation, and final reporting.
-- Owns the primary working branch or worktree.
-- Resolves conflicts between worker outputs.
+    # DRAIN
+    if skill_exists("autonomous-drain"):
+        invoke("/autonomous-drain LABEL=" + label)
+    else:
+        # Until issue #721 lands, drive the N-lane composition inline per
+        # CLAUDE.md § Drain-the-Queue Pipeline (N-Lane Pattern).
+        run_n_lane_drain_inline(label)
 
-### Planner
+    # IMPROVE
+    invoke("/improve")
 
-- Read-only.
-- Produces decomposition, target files, risks, acceptance criteria, and verification plan.
-- Must not modify repository files.
+    # CLOSE
+    invoke("/sprint-close")
 
-### Developer
-
-- Bounded write.
-- Owns one task or subtask and an explicit write scope.
-- Must not edit files outside assigned ownership.
-- Must not create the final integration commit unless explicitly delegated.
-
-### Code Reviewer
-
-- Read-only.
-- Runs after `DEV` and before `TEST`.
-- Reviews changed files and dependency impact for correctness, maintainability, simplification opportunities, DRY violations, and documentation or commenting gaps.
-- Must identify opportunities to reduce duplication and unnecessary complexity before broader testing proceeds.
-
-### Tester
-
-- Primarily read-only plus command execution.
-- May write only artifacts and explicitly allowed test files.
-- Owns verification evidence, not final merge decisions.
-
-### Reviewer
-
-- Read-only.
-- Runs after `TEST`.
-- Focuses on merge readiness, unresolved findings, security, performance, and compliance escalation when applicable.
-
-### Fixer
-
-- Bounded write.
-- May only remediate explicit findings within explicit write scope.
-- Must return rollback notes and residual risks.
-
-### Promoter
-
-- Read-only relative to repo code.
-- May write memory entries and create follow-up tasks or issues.
-- Mines runs for repeatable automation candidates.
-
-## Repo Management Rules
-
-- Only the orchestrator should own the final integration branch by default.
-- Worker agents should use isolated branches, worktrees, or patch-style handoffs when parallel write ownership exists.
-- No agent may commit unless its contract explicitly grants commit authority.
-- By default, only the orchestrator creates the final commit and pull request.
-- Every write-capable agent must declare `allowed_write_scope`.
-- Overlapping write scopes must be serialized or escalated with an explicit merge plan.
-- Every handoff must include `changed_files`, `artifacts`, `verification_run`, and `handoff_status`.
-- If unrelated local changes or unsafe branch state are present, the orchestrator must pause with `needs_human`.
-
-## Canonical Task Shape
-
-Normalize all task sources into:
-
-```json
-{
-  "id": "string",
-  "title": "string",
-  "body": "string",
-  "priority": "low|medium|high|urgent",
-  "labels": [],
-  "subtasks": [],
-  "acceptance_criteria": [],
-  "source_url": "string"
-}
+    # REPORT
+    emit final summary to operator + handoff note
 ```
 
-`todo.json` should be treated as a first-class local task source. It must support parent tasks, subtasks, dependencies, acceptance criteria, status, blockers, and follow-up automation items without requiring any network service.
+## Recommended specialists (registered-agent names, NOT filenames)
 
-## Phase Gates
+Use these in `Agent` tool calls via `subagent_type: <name>`. Filesystem note: the universal-pack sync renames each to `aa_<underscore>.md` on install — **do not Read the `.md` files; invoke by registered name.**
 
-### 0. INIT
+- `code-reviewer` — merge readiness
+- `qa-tester` — verification selection and behavioral validation
+- `security-auditor`, `dep-auditor` — security-sensitive changes
+- `perf-profiler` — performance-sensitive changes
+- `db-analyst` — schema, query, migration
+- `infra-checker` — deployment / environment
+- `soc2-auditor`, `hipaa-auditor` — compliance scope explicit
+- `security-fixer`, `compliance-fixer` — bounded write scope, rollback expectations
+- `skill-promoter` — mine repeated workflows
+- `quality-gate` — non-trivial plans before DEV (CLAUDE.md mandate)
+- `completion-auditor` — every issue close (CLAUDE.md line 30, ADR-010)
+- `reconciler` — `/reconcile` sub-agent fallback when inline reconcile hits complex conflict
 
-- Load repository rules and project config.
-- Read host-specific instruction entrypoints if present, including `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
-- Read `HANDOFF.md` for ephemeral state if the project uses it.
-- Detect language, test commands, and verification tooling.
-- Restore resumable session state if present and fresh.
-- Verify the current branch is safe to work from.
+## What this wrapper deliberately removes
 
-Output:
+Compared to the prior version of this skill (the 343-line abstract spec, preserved at `pipeline/autonomous-spec-host-agnostic.md`):
 
-```yaml
-phase: INIT
-status: success | failed
-summary: string
-repo_profile:
-  languages: []
-  build_command: string
-  lint_command: string
-  test_command: string
-  ui_verification: string
-```
-
-### 1. PICK
-
-- Query the configured task source.
-- Skip tasks marked blocked, human-only, or already attempted in this session.
-- Prefer the configured source. GitHub Issues is a strong shared default. `todo.json` is a strong host-agnostic local default.
-- Record the selected task ID, URL, and acceptance criteria.
-
-If using GitHub Issues:
-
-- select from open issues with a configurable label filter
-- post a brief orchestration comment when work begins
-- update issue state or checklist after each completed phase
-
-If using `todo.json`:
-
-- read from a canonical schema
-- persist phase status after each transition
-- write blockers, artifacts, and improvement candidates back into the task record or adjacent state
-- support offline execution across Codex, Claude, Gemini, Anvil, or any other host
-
-### 2. PLAN
-
-- Explore the codebase and identify impacted files, risks, and verification steps.
-- Decompose large tasks into atomic subtasks with explicit dependencies.
-- Emit machine-readable decomposition.
-
-Required decomposition format:
-
-```json
-{
-  "subtasks": [
-    {
-      "id": "local-1",
-      "title": "string",
-      "depends_on": [],
-      "target_files": [],
-      "acceptance_criteria": [],
-      "risk": "low|medium|high"
-    }
-  ]
-}
-```
-
-Parallel work is allowed only when write scopes do not overlap.
-
-### 3. DEV
-
-- Create or switch to a task branch.
-- Implement only the scoped task or subtask.
-- Keep changes minimal and reversible.
-- Capture changed files and diff statistics.
-
-If specialist workers are available:
-
-- assign bounded ownership by file path or module
-- do not allow overlapping write ownership without an explicit merge plan
-
-### 4. CODE_REVIEW
-
-- Run a dedicated code review pass before broader testing.
-- Review changed files, affected modules, and dependency impact.
-- Check for correctness risks, maintainability issues, unnecessary complexity, simplification opportunities, naming convention drift, and style convention drift.
-- Enforce DRY by identifying duplication, pattern drift, and avoidable copy-paste changes.
-- Check whether documentation, comments, or developer-facing guidance should be updated for non-obvious changes.
-- Block `TEST` when the review identifies unresolved blocker-level issues.
-
-Required outputs:
-
-- verdict: approve | request_changes | needs_discussion
-- findings with severity and affected file when possible
-- simplification opportunities
-- DRY violations or risks
-- documentation or comment gaps
-- dependency concerns
-
-### 5. TEST
-
-- Run the smallest relevant checks first.
-- Expand to broader validation only after targeted checks pass.
-- For UI changes, include behavioral verification.
-- For data or integration changes, verify resulting state rather than only process exit codes.
-
-Required evidence categories:
-
-- build
-- lint
-- unit
-- integration
-- ui if applicable
-- data verification if applicable
-
-### 6. REVIEW
-
-- Run a final review pass.
-- Run security review when the change touches auth, secrets, infrastructure, dependencies, or user input boundaries.
-- Add performance or compliance review when the task profile warrants it.
-
-### 7. PR
-
-- Prepare a merge-ready summary backed by captured artifacts.
-- If the runtime supports GitHub, open or update a pull request.
-- If PR automation is unavailable, emit a ready-to-use PR body and mark `needs_human`.
-
-### 8. REPORT
-
-- Update the task source with outcome, artifact links, and blockers.
-- Persist durable learnings to the memory layer if available.
-- Save resumable run state.
-
-### 9. IMPROVE
-
-- Review the finished run for repeated command chains, retries, and manual decisions.
-- Promote stable patterns into scripts, adapters, or prompt-pack changes.
-- Record benchmark deltas when a workflow becomes faster or more reliable.
-- If automation work should be deferred, open or update a GitHub Issue so the improvement is tracked.
-
-## Completion Criteria
-
-Do not report success unless all applicable items are true:
-
-- code changes are committed on a safe task branch
-- relevant verification commands passed
-- code review findings are resolved or explicitly accepted before broad testing proceeds
-- new or updated tests exist when the change required them
-- review findings are resolved or explicitly accepted
-- task source has been updated with outcome
-- PR exists or a human-ready PR artifact has been produced
-
-For mature deployments, also prefer:
-
-- the run has been mined for automation opportunities
-- at least one durable learning candidate is recorded when repetitive friction was observed
-
-## Failure Modes
-
-Use `needs_human` instead of forcing progress when:
-
-- credentials are missing
-- production-only systems would need to be touched
-- branch state is unsafe
-- merge conflicts or unrelated local changes block reliable automation
-- the memory, database, or task source integration appears stale after recent infrastructure changes
-
-## Recommended Specialists
-
-- `code-reviewer` for merge readiness
-- `qa-tester` for verification selection and behavioral validation
-- `security-auditor` and `dep-auditor` for security-sensitive changes
-- `perf-profiler` for performance-sensitive changes
-- `db-analyst` for schema, query, or migration work
-- `infra-checker` for deployment or environment issues
-- `soc2-auditor` and `hipaa-auditor` when compliance scope is explicit
-- `security-fixer` and `compliance-fixer` only with bounded write scope and rollback expectations
-- `skill-promoter` to mine repeated workflows and promote them into automation
+- The detailed INIT/PICK/PLAN/DEV/CODE_REVIEW/TEST/REVIEW/PR/REPORT/IMPROVE phase definitions — those are owned by the individual skills now. Duplicating them caused drift.
+- The "open a PR" language in phase 7 — conflicts with the branching contract.
+- The bare specialist-name list with no execution context — replaced with explicit "registered name vs filename" guidance.
+- The session-state and task_run YAML schemas — those belong in `/autonomous-drain` (#721), not here.

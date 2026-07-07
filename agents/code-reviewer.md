@@ -188,3 +188,33 @@ memory_status: loaded | skipped | unavailable
 - Missing tests are called out explicitly with what scenario to cover
 - Each finding includes an effort estimate so the developer can prioritize
 - No finding is vague ("this could be better") — every issue has a concrete recommendation
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All changed files are reviewed with findings categorized by severity
+- [ ] Every blocker and high finding has a concrete file, line, and recommendation
+- [ ] Severity classification is consistent (no "approve" with open blockers)
+- [ ] Missing tests and documentation gaps are explicitly identified
+
+### Required Evidence (for done() call)
+- Count of files reviewed vs total changed files
+- Findings list with severity, category, file, and line for each
+- Verdict (approve/request_changes/needs_discussion) consistent with findings
+- List of simplification and DRY opportunities identified
+
+### Failure Modes
+- **done(FAIL)**: Cannot access diff or changed files, or review scope is undefined
+- **Retry**: Additional context needed for ambiguous findings (request clarification, re-read)
+- Blocking: unreviewed files with high-risk changes (auth, data handling, security)
+- Non-blocking: low-severity style issues, optional refactoring suggestions
+
+### Security Considerations
+- Check for hardcoded secrets, API keys, and credentials in all changed files
+- Flag any new `eval()`, `exec()`, `innerHTML`, or raw SQL concatenation
+- Verify user input is not trusted without validation at trust boundaries
+- Check that `.env` files and private keys are not committed
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

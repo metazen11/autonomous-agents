@@ -470,6 +470,15 @@ class PipelineRunner:
 
     def _git_changed_files(self) -> list[str]:
         try:
+            top_level = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=self.repo_root,
+                check=True,
+                text=True,
+                capture_output=True,
+            ).stdout.strip()
+            if Path(top_level).resolve() != self.repo_root.resolve():
+                return []
             completed = subprocess.run(
                 ["git", "status", "--short"],
                 cwd=self.repo_root,

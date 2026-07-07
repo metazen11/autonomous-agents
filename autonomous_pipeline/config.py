@@ -17,6 +17,11 @@ def load_runtime_config(repo_root: str | Path) -> RuntimeConfig:
     return RuntimeConfig(
         task_source=payload.get("task_source", "todo_json"),
         todo_path=payload.get("todo_path", "todo.json"),
+        asana_project_gid=payload.get("asana_project_gid"),
+        asana_workspace_gid=payload.get("asana_workspace_gid"),
+        asana_default_section_gid=payload.get("asana_default_section_gid"),
+        task_file=payload.get("task_file"),
+        prompt_text=payload.get("prompt_text"),
         artifacts_dir=payload.get("artifacts_dir", "artifacts"),
         memory_url=payload.get("memory_url", "http://127.0.0.1:3377"),
         github_repo=payload.get("github_repo"),
@@ -35,10 +40,25 @@ def load_runtime_config(repo_root: str | Path) -> RuntimeConfig:
     )
 
 
-def merge_cli_overrides(config: RuntimeConfig, *, todo_path: str | None = None, memory_url: str | None = None) -> RuntimeConfig:
+def merge_cli_overrides(
+    config: RuntimeConfig,
+    *,
+    todo_path: str | None = None,
+    task_file: str | None = None,
+    prompt_text: str | None = None,
+    memory_url: str | None = None,
+) -> RuntimeConfig:
     data = config.to_dict()
     if todo_path is not None:
         data["todo_path"] = todo_path
+    if task_file is not None:
+        data["task_file"] = task_file
+        data["task_source"] = "file"
+        data["prompt_text"] = None
+    if prompt_text is not None:
+        data["prompt_text"] = prompt_text
+        data["task_source"] = "prompt"
+        data["task_file"] = None
     if memory_url is not None:
         data["memory_url"] = memory_url
     return RuntimeConfig(**data)
