@@ -99,8 +99,10 @@ which aliases were used.
 8. Squash with `git reset --soft origin/<integration_trunk>` then
    `git commit -m "<synthesized message>"`.
 9. Run independent code review. Execute
-   `codex review --base origin/<integration_trunk> --commit HEAD` (codex CLI
-   v0.133+). Capture stdout verbatim and surface it to the operator. If codex
+   `codex review --base origin/<integration_trunk>` (codex CLI v0.133+;
+   `--commit` was removed by v0.147 and now errors with "the argument
+   '--base <BRANCH>' cannot be used with '--commit <SHA>'" — `--base` alone
+   reviews the working branch against that base). Capture stdout verbatim and surface it to the operator. If codex
    reports any blocking finding (silent no-op, wrong layer, security regression,
    broken contract), STOP and do not push until the agent fixes the issue or the
    user explicitly waives it. If the `codex` binary is missing or the command
@@ -193,7 +195,7 @@ Always emit structured JSON to stdout in addition to any narration:
   "ci_commands": ["make ci"],
   "codex_review": {
     "ran": true,
-    "command": "codex review --base origin/dev --commit HEAD",
+    "command": "codex review --base origin/dev",
     "blocking_findings": 0,
     "summary": "one-line summary or 'no issues'"
   },
