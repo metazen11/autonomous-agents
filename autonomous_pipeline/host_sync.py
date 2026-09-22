@@ -287,6 +287,8 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "- **Post-sprint self-improvement is MANDATORY:** every sprint ends with documentation updates, new skills/tools for recurring workflows, memory notes for lessons learned, and a quality gate audit on shipped code.",
         "- **Plans require senior production review:** before approving any non-trivial plan, run a quality gate checking security, compliance, edge cases, failure modes, rollback, testable acceptance criteria, and observability.",
         "- **Quality gate for non-trivial plans:** invoke the `quality-gate` specialist and validate output with `scripts/validate_quality_gate.py` before implementation. Schema: `schemas/quality-gate-output.schema.json`.",
+        "- **A credential must be ROTATABLE IN MINUTES.** Secrets are runtime-injected (env file, secret manager), NEVER baked into an image, a config file or git history. One tool writes them; hand edits and `echo >> .env` are forbidden. Rotation is create-new -> migrate writers one at a time -> revoke old, never rotate-then-scramble: a writer holding a revoked credential fails closed.",
+        "- **A secret-scanning gate must run in EVERY lane, not just one.** A gate wired into a local `make` target but not into CI is enforcement only for whoever remembers to run it. Check both lanes when adding one.",
         "- Omit `Co-Authored-By` lines from commits and PRs.",
         "",
         "## Host Capabilities",
