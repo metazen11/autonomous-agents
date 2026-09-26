@@ -235,3 +235,33 @@ memory_status: loaded | skipped | unavailable
 - No fix introduces a new vulnerability (e.g., escaping that breaks functionality)
 - Residual risks are documented with a mitigation timeline
 - Build, lint, and existing tests pass after all fixes are applied
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] Every fix maps to a specific finding from the security audit
+- [ ] Vulnerability is patched and verified with targeted test or scan
+- [ ] Regression test added to prevent reintroduction of the vulnerability
+- [ ] Rollback path documented for each change
+
+### Required Evidence (for done() call)
+- Before/after evidence for each fix (code diff, scan results)
+- Test results showing existing tests still pass
+- Verification command output confirming the fix closes the finding
+- Rollback plan with specific revert commands per change
+
+### Failure Modes
+- **done(FAIL)**: Fix introduces a new vulnerability, or required files are outside allowed write scope
+- **Retry**: Fix partially mitigates the issue — iterate with a more targeted patch
+- Blocking: fix breaks existing functionality, fix introduces new security weakness, tests fail
+- Non-blocking: minor code style issues in the fix, documentation improvements deferred
+
+### Security Considerations
+- Verify the fix does not introduce a new vulnerability (e.g., escaping that breaks functionality, new injection vector)
+- Do not weaken existing security controls to fix a different issue
+- Ensure secrets removed from code are also rotated (not just deleted from source)
+- Test that the fix works across all relevant input paths, not just the reported attack vector
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

@@ -81,14 +81,25 @@ If you cannot fill a required field, set its value to `"BLOCKED — [reason]"` a
 
 Validate your output against the schema before returning it. The orchestrator will run `scripts/validate_quality_gate.py` on your output and reject non-compliant results.
 
-```yaml
-status: success | needs_human | failed
-summary: string
-verdict: approved | needs_refinement | blocked
-output_file: plans/{task-id}-quality-gate.json
-evidence: [string]
-follow_up: [string]
-memory_status: loaded | skipped | unavailable
+```json
+{
+  "verdict": "approved | needs_refinement | blocked",
+  "source_reference": {"system": "github", "id": "GH-NNN", "url": "..."},
+  "summary": "What this plan accomplishes and why",
+  "gaps_found": [{"gap": "...", "severity": "critical|major|minor", "recommendation": "..."}],
+  "refined_plan": {"objective": "...", "scope": "...", "non_goals": ["..."], "steps": []},
+  "acceptance_criteria": [{"criterion": "...", "testable": true, "verification_method": "..."}],
+  "testing_plan": {"unit": [], "integration": [], "e2e": [], "negative": [], "regression": []},
+  "security_review": {"risks": [], "controls": [], "secrets_handling": "...", "auth_requirements": "..."},
+  "compliance_review": {"applicable_frameworks": ["N/A"], "requirements": []},
+  "edge_cases": [{"case": "...", "expected_behavior": "..."}],
+  "failure_modes": [{"failure": "...", "degradation": "...", "recovery": "..."}],
+  "observability": {"logs": [], "metrics": [], "alerts": [], "error_messages": []},
+  "deployment": {"steps": [], "rollback": []},
+  "definition_of_done": ["..."],
+  "documentation": {"updates_needed": []},
+  "improvements": {"docs_to_update": [], "proposed_ci_checks": [], "agents_md_additions": []}
+}
 ```
 
 ## Self-Improvement Protocol
@@ -132,3 +143,35 @@ If a memory layer exists:
 - At least one improvement candidate is proposed
 - Output validates against `schemas/quality-gate-output.schema.json`
 - Output is saved to `plans/{task-id}-quality-gate.json`
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All 11 hard rules evaluated against the input
+- [ ] Verdict is consistent with findings (no "approved" with open critical/major gaps)
+- [ ] Every gap has severity, description, and recommendation
+- [ ] Refined plan uses canonical names throughout
+- [ ] Acceptance criteria are testable boolean statements
+- [ ] Testing plan has all five categories (or explicit N/A)
+- [ ] At least one improvement proposed
+- [ ] Output validates against schema
+
+### Required Evidence
+- The complete JSON output matching the schema
+- Source reference to the original issue/task
+- Explicit severity classification for every gap
+
+### Failure Modes
+- Input is too vague to review: set verdict to `needs_refinement`, request clarification
+- Input is dangerous: set verdict to `blocked`, explain in `block_reason`
+- Cannot access referenced files: note in gaps, continue with available information
+
+### Security Considerations
+- Never include actual secrets, tokens, or credentials in output
+- Redact sensitive information found during review
+- Note when a plan handles secrets incorrectly
+
+### Observability
+- Log verdict and gap count
+- Track time-to-review for quality metrics
+- Save output to `.anvil/quality-gate/{task-id}.json`

@@ -228,3 +228,33 @@ memory_status: loaded | skipped | unavailable
 - Log analysis identifies error patterns, not just "no errors found"
 - Recommendations are prioritized: immediate (fix now), soon (today), scheduled (this sprint)
 - Every "green" status includes the specific check that passed, not just absence of failure
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All services in scope are checked with health status reported
+- [ ] SSL certificate expiry dates verified for all HTTPS endpoints
+- [ ] Disk space and resource utilization checked on accessible hosts
+- [ ] Recommendations prioritized by urgency (immediate/soon/scheduled)
+
+### Required Evidence (for done() call)
+- Health check results per service with status (green/yellow/red) and timestamp
+- SSL certificate details (domain, expiry date, days remaining, issuer)
+- Disk utilization percentages per mount point
+- Container status with restart counts and uptime
+
+### Failure Modes
+- **done(FAIL)**: Critical service unreachable and cannot determine cause, or multiple red-status findings requiring immediate operator intervention
+- **Retry**: Service temporarily unavailable — re-check after brief interval; DNS propagation in progress
+- Blocking: expired SSL certificates, disk >95% full, critical service down
+- Non-blocking: yellow-status warnings, minor disk utilization approaching threshold
+
+### Security Considerations
+- No internal IP addresses, VPC CIDRs, or private DNS names in external-facing reports
+- Do not expose service credentials, API keys, or authentication tokens in check output
+- Redact AWS account IDs and resource ARNs from public reports
+- Health check endpoints should not reveal internal architecture details
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

@@ -1,0 +1,597 @@
+# AGENTS.md — Agent System Enforcement Values
+
+These rules apply to ALL agent sessions (Claude Code, Anvil, or any other agent)
+working on this project or any project under this user's account.
+
+**Scope:** User-level (not project-specific). Copy this to `~/.claude/AGENTS.md` or
+include via sync_prompt_pack.py for cross-project enforcement.
+
+---
+
+## 0. Session Start — process handoff markers FIRST
+
+Before doing any other work in a new session, scan `plans/session-handoff/` (top-level, NOT the `processed/` subfolder) for unprocessed marker files. The `git-session` hook (in `~/_CODING/hooks/git-session/`) writes one any time a prior session committed on a protected branch (e.g. `develop`) and had to redirect the commit to a working branch — without the marker the orphaned commit is invisible.
+
+Each marker is a JSON file. The current schema is:
+
+```json
+{
+  "schema_version": "1",
+  "kind": "protected_branch_redirect",
+  "timestamp": "2026-05-21 09:24:31",
+  "original_branch": "develop",
+  "redirected_branch": "work/session-20260521",
+  "commit_sha": "ff4e92a...",
+  "summary": "1 modified"
+}
+```
+
+For each marker found:
+
+1. Inspect the redirected branch + commit (`git show <commit_sha>`)
+2. Decide if the work belongs on the integration trunk via `/reconcile`, stays on a working branch for further work, or should be discarded
+3. After acting, move the marker to `plans/session-handoff/processed/` (the hook never deletes — that's the agent's responsibility, with an audit trail)
+
+This is agent-agnostic — Claude Code, Cursor, CI runners, and ad-hoc tools all follow the same rule. The hook is the writer; the agent is the reader and processor.
+
+**Escalation:** Markers older than 7 days that are still unprocessed are a signal that something went wrong. Open a GitHub issue and ping a human rather than silently accumulating.
+
+---
+
+## 0A. Shared Skill Discovery — load superpowers by default
+
+At session start, discover available skills/capabilities and invoke the relevant
+workflow skill before planning or implementation when the host supports skills.
+Do not wait for the user to explicitly say "use superpowers" if the host has the
+capability.
+
+- Claude: run `/superpowers` or invoke `superpowers:using-superpowers` when available.
+- Codex: use the installed Superpowers skills when the task matches them.
+- Gemini: activate the matching skill with `activate_skill` when available.
+- Anvil: load the matching local skill/tool contract before execution when available.
+- If a skill system is not available, follow the same protocol directly from this
+  prompt pack and record the gap in `agentMemory` or `HANDOFF.md`.
+
+---
+
+## 1. Proof of Work (POW)
+
+| ID | Rule |
+|----|------|
+| POW-01 | HANDOFF.md updated every session — date, branch, phase, files, tests |
+| POW-02 | Test results pasted verbatim — actual CLI output, not summaries |
+| POW-03 | Before/after diffs shown — line-level changes visible |
+| POW-04 | Pipeline flow documented as numbered steps |
+| POW-05 | Bug table maintained — root cause + fix for every bug found |
+| POW-06 | Files created vs files modified separated |
+| POW-07 | Key decisions documented with rationale |
+| POW-08 | Demo artifacts required — prove it works visually |
+| POW-09 | Sprint/task completion tracked with evidence |
+| POW-10 | Next steps always defined — never end without "what's left" |
+
+## 2. Testing (TST)
+
+| ID | Rule |
+|----|------|
+| TST-01 | All tests must pass before session ends — 0 failures |
+| TST-02 | Test count stated explicitly — "48 passed in 0.51s" |
+| TST-03 | Reproducible test data — random seed pinned (seed=42) |
+| TST-04 | Test data covers all sources |
+| TST-05 | Shell scripts have safety flags — set -euo pipefail |
+| TST-06 | Docker health verification — services healthy, not just started |
+| TST-07 | CI must stay green |
+| TST-08 | Regression guard — test count never decreases |
+
+## 3. Security (SEC)
+
+| ID | Rule |
+|----|------|
+| SEC-01 | CJIS compliance posture documented with specific controls |
+| SEC-02 | Physical tenant isolation — IAM per S3 prefix, NOT row-level security alone |
+| SEC-03 | Secrets never in code — Vault/SM at runtime only |
+| SEC-04 | Secrets scan in CI — false positives excluded, not scan disabled |
+| SEC-05 | Non-root containers — multi-stage Docker builds |
+| SEC-06 | OIDC/federated identity end-to-end |
+| SEC-07 | Role-based access with 4 tiers |
+| SEC-08 | No shared credentials — each department gets own OIDC group |
+| SEC-09 | Data steward model — departments control their own connectors |
+| SEC-10 | Memory limits on all containers |
+
+## 4. Architecture (ARC)
+
+| ID | Rule |
+|----|------|
+| ARC-01 | Vendor and industry agnostic — no lock-in |
+| ARC-02 | Modular consumption — Superset, Power BI, or any JDBC/ODBC client |
+| ARC-03 | Connector marketplace pattern — build once, share across tenants |
+| ARC-04 | Connectors can ship with built-in reports |
+| ARC-05 | Medallion architecture enforced — Bronze/Silver/Gold, no skipping |
+| ARC-06 | BaseConnector ABC — subclasses only implement _fetch_data() and _parse_response() |
+| ARC-07 | Intelligent sync — system determines frequency, incremental by default |
+| ARC-08 | Schema selection — departments choose what to sync |
+| ARC-09 | Standardization layer for dirty data in Silver |
+| ARC-10 | Separate databases per service |
+| ARC-11 | Docker exec for init — no host CLI requirements beyond Docker |
+| ARC-12 | Hub-and-spoke data model — central hub, spoke prefixes per department |
+| ARC-13 | Domain KPIs baked into Gold — NFPA 1710/1720 benchmarks |
+| ARC-14 | Landing-design anti-patterns enforced in CI via `scripts/check_landing_design_invariants.py` — see issue #467 |
+
+### Landing-design invariants (CI-enforced)
+
+The four mechanically-checkable anti-patterns from
+`docs/LANDING_STAGING_PROD_DESIGN.md` are enforced by
+`scripts/check_landing_design_invariants.py`, wired into the
+`landing-invariants` job in `.github/workflows/agent-enforcement.yml`. Any
+PR that introduces one of these fails CI:
+
+1. **Per-department dbt model filenames** — `silver.neris_san_bernardino_*`
+   is wrong; `silver.neris_incidents` is right. Universal schema, sparse
+   population.
+2. **Per-department Gold subdirectories** — `dbt/models/gold/<dept>/` is
+   forbidden. Gold is one schema, one row per (department_id, ...key...).
+3. **Hardcoded `_department_id` literals** — `WHERE _department_id =
+   'portland'` defeats RLS. Use `{{ var('app_department_id') }}` or the
+   on-run-start macro from migration 050.
+4. **Schema without fixture** — every `schemas/*.yaml` must have a matching
+   `tests/fixtures/<source>/*.json`. A schema without a fixture is an
+   untestable contract.
+
+The script runs ~50 files in under a second. Local dev: `python3
+scripts/check_landing_design_invariants.py`. The four prose-only
+anti-patterns (department adapter, raw-payload discarding, branching on
+`_department_id`, transform-tool-owns-raw) still require human review at
+code-review time.
+
+## 5. Developer Experience (DX)
+
+| ID | Rule |
+|----|------|
+| DX-01 | Makefile as the interface — every operation has a make target |
+| DX-02 | Works locally AND in containers — env_var with sensible defaults |
+| DX-03 | Docker compose config must validate |
+| DX-04 | Init scripts are idempotent |
+| DX-05 | No manual intervention in pipeline — end-to-end without human steps |
+| DX-06 | YAML anchors for DRY config |
+| DX-07 | .dockerignore maintained |
+| DX-08 | Dependency versions pinned |
+
+## 6. Product / UX (UX)
+
+| ID | Rule |
+|----|------|
+| UX-01 | Onboarding is a journey, not a config file |
+| UX-02 | Permissions are a first-class feature |
+| UX-03 | Self-service over ticket-driven |
+| UX-04 | Control plane is the missing layer |
+| UX-05 | Show, don't tell — demo artifacts beat slide decks |
+| UX-06 | Speed is the competitive advantage |
+| UX-07 | Governance without WFCA owning data quality |
+| UX-08 | Use what you want — modular by design |
+| UX-09 | All data editing uses HTMX inline save — no full-page form POST for single-field updates |
+| UX-10 | Reuse template components (components/*.html) — never build a one-off inline form |
+| UX-11 | Every save action: no page reload, no scroll jump, visual feedback (✓ or error) |
+| UX-12 | Image/logo URL fields must show a live preview thumbnail |
+| UX-13 | Color fields must have a color picker swatch + hex input |
+
+## 7. Continuous Improvement (CTO)
+
+Two loops run continuously. The post-sprint loop catches systemic
+things; the in-session loop catches them in the moment so they don't
+get lost by sprint-end. Both are mandatory.
+
+### Post-sprint loop
+
+Run `/improve` and `/sprint-close` at the end of every sprint. See
+CLAUDE.md § "Post-Sprint Self-Improvement" for the full 5-step
+checklist. Quick reference:
+
+1. **Update durable docs** — `docs/CHANGELOG.md`, `CLAUDE.md`,
+   `docs/ARCHITECTURE.md`, `AGENTS.md`, `HANDOFF.md`, `docs/E2E_DEMO.md`,
+   `docs/SECURITY.md` if RLS/auth/CJIS changed, `docs/CONNECTORS.md`
+   if inventory changed. Code without updated docs is NOT done.
+2. **Create/update skills + tools** for recurring workflows surfaced
+   during the sprint.
+3. **Persist lessons** to agent-memory: feedback memories for
+   corrected approaches, project memories for architectural decisions,
+   reference memories for external system pointers.
+4. **Quality-gate audit** against shipped code: security, compliance,
+   edge cases, failure modes, test coverage, naming-convention
+   violations, RLS on new tenant-scoped tables. Invoke the
+   `quality-gate` agent and validate output with
+   `scripts/validate_quality_gate.py` per ADR rules.
+5. **Completion audit per closed issue** (ADR-010) — every issue
+   closed by the sprint PR must have a `plans/<N>-completion-audit.json`
+   with verdict `approved` before close.
+
+`/sprint-close` automates steps 1-3 + flags 4-5.
+
+### In-session loop
+
+Separate from post-sprint. Captures improvements in the moment.
+
+1. **5-tool threshold.** If a task takes more than 5 tool calls in a
+   single turn, build a skill before moving on:
+   - Project skills live at `.claude/skills/<name>/skill.md` and are
+     git-tracked (the `.gitignore` re-include rule allows
+     `.claude/skills/` and `.claude/agents/` through).
+   - Frontmatter `description:` must be specific enough that the
+     harness routes to it automatically. Vague descriptions don't
+     get invoked.
+   - If the skill implements a documented procedure (AGENTS.md
+     section, ADR, runbook), reference that section so the two don't
+     drift. Update the doc first, then the skill — never let them
+     drift.
+
+2. **Stale skill → fix while you work.** If a skill gives wrong
+   commands, references deleted files, or is missing a step you had to
+   improvise, fix the skill in the same turn. Spawn an agent for the
+   fix if it would derail in-flight work. Do not leave skills broken
+   for the next session.
+
+3. **End-of-session retrospective** (before writing the final summary):
+   - What 2-tool pattern hit 3+ times? — also a skill candidate.
+   - What did I learn the next agent won't know? — memory write,
+     feedback memory, or HANDOFF note.
+   - What worked unexpectedly? — save as a feedback memory too;
+     post-sprint loops only catch corrections.
+
+4. **Track failures, not just successes.** Workarounds for a broken
+   skill belong IN the skill, never in private memory.
+
+Precedent: `/backup` (2026-05-14) — 15+ tool calls to back up a DB
+before `down -v` → one `/backup snapshot` invocation next time, plus
+AGENTS.md § 12 (BAK) codifying the procedure. The two-layer rule of
+"doc the procedure, then build the skill that runs it" is the pattern.
+
+### Prompt Pack Location
+
+Source of truth: `~/_CODING/autonomous_agents_mds/`
+Synced to: `~/.claude/agents/`, `~/.codex/agents/`, `~/.gemini/agents/`, `/opt/anvil/agents/`
+Sync command: `cd ~/_CODING/autonomous_agents_mds && PYTHONPATH=. python3 scripts/sync_prompt_pack.py sync`
+
+### Agent Inventory (22 agents)
+
+#### Delivery Pipeline
+| Agent | Purpose |
+|-------|---------|
+| `code-reviewer` | Correctness, DRY, naming, style, maintainability |
+| `qa-tester` | Test selection, behavioral verification, edge cases |
+| `quality-gate` | Senior review gate — blocks vague/unsafe plans |
+| `completion-auditor` | Validates a closed issue's ACs against shipped evidence (see § Completion audit) |
+| `security-fixer` | Bounded fix for audited vulnerabilities |
+| `compliance-fixer` | Bounded SOC 2/HIPAA remediation |
+| `skill-promoter` | Mines repeated workflows, promotes to automation |
+
+#### Security & Compliance
+| Agent | Purpose |
+|-------|---------|
+| `security-auditor` | OWASP Top 10, secrets, CSP, dependencies |
+| `hipaa-auditor` | HIPAA technical safeguards (45 CFR 164.312) |
+| `soc2-auditor` | SOC 2 Type II Trust Services Criteria |
+| `dep-auditor` | Dependency CVEs, licenses, supply chain risk |
+
+#### Infrastructure & Performance
+| Agent | Purpose |
+|-------|---------|
+| `infra-checker` | Service health, certs, DNS, containers |
+| `db-analyst` | Query plans, indexes, migrations, connection pools |
+| `perf-profiler` | Web vitals, bundle size, API latency, memory leaks |
+
+#### CTO Continuous Improvement
+| Agent | Purpose | CTO Lens |
+|-------|---------|----------|
+| `cto-self-eval` | Code health, debt density, maturity | "Would a senior engineer be embarrassed?" |
+| `cto-arch-review` | Service topology, complexity budget | "Is this the simplest system that works?" |
+| `cto-security-posture` | Real security vs theater | "Would we survive an audit tomorrow?" |
+| `cto-test-quality` | Test meaningfulness, coverage gaps | "If I introduced a bug, would tests catch it?" |
+| `cto-dx-review` | Onboarding friction, Makefile, errors | "How long from git clone to shipping?" |
+| `cto-dep-health` | Supply chain risk, CVEs, licenses | "If a dep is compromised, what's the blast radius?" |
+| `cto-perf-review` | Resource efficiency, query patterns | "At 10x load, what breaks first?" |
+| `cto-parallel-work` | Task decomposition, conflict avoidance | "Which tasks can run at the same time?" |
+
+### Skills
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| Autonomous Pipeline | `/autonomous` | Full delivery pipeline: INIT → PICK → PLAN → DEV → ... → IMPROVE |
+| Continuous Improvement | `/improve` | 8-dimension scorecard + top 3 fixes |
+| Sprint Close | `/sprint-close` | Post-sprint docs: CHANGELOG, CLAUDE.md, ARCHITECTURE, HANDOFF |
+
+### Scorecard Tracking
+
+Scorecards saved to `docs/scorecards/YYYY-MM-DD.md`. Compare consecutive scorecards for trend.
+Standing meta-checklists in `todo.json` (META-001 through META-008).
+
+| ID | Dimension | When to Run |
+|----|-----------|-------------|
+| META-001 | Codebase Self-Evaluation | Every sprint start |
+| META-002 | Architecture & Simplification | After adding/removing services |
+| META-003 | Security & Compliance | Before every PR to main |
+| META-004 | Test Quality & Coverage | After writing new tests |
+| META-005 | Documentation Freshness | End of every sprint |
+| META-006 | Developer Experience | When friction is noticed |
+| META-007 | Performance & Resources | When things feel slow |
+| META-008 | Dependency Health | Monthly or before releases |
+
+---
+
+## 8. Agent Meta-Rules (AGT)
+
+| ID | Rule |
+|----|------|
+| AGT-01 | Explore before planning — read existing code/docs first |
+| AGT-02 | Plan mode before build mode |
+| AGT-03 | Parallel workstreams with teams |
+| AGT-04 | Clarifying questions before assumptions — but bias toward action |
+| AGT-05 | Session state is persistent — HANDOFF.md is the contract |
+| AGT-06 | Summary table at session end |
+| AGT-07 | Production-grade, not prototype |
+| AGT-08 | Decisions logged, not buried |
+| AGT-09 | Fix forward, document backward |
+| AGT-10 | Never end without verification |
+
+## 8. Connectors / Airbyte (CON)
+
+| ID | Rule |
+|----|------|
+| CON-01 | Declarative CDK first — Python HttpStream only when declarative is insufficient |
+| CON-02 | Every connector ships as a Docker image with semver tag (wfca/source-*:0.x.y) |
+| CON-03 | manifest.yaml must validate with `airbyte-cdk validate` before merge |
+| CON-04 | All streams have JSON schema — types, required fields, field descriptions |
+| CON-05 | Incremental streams use cursor fields with configurable lookback window |
+| CON-06 | Pagination must handle full dataset extraction (not just first page) |
+| CON-07 | Rate limiting: 429 → exponential backoff with jitter (not crash or infinite retry) |
+| CON-08 | Auth failure returns structured error with diagnostic message (not stack trace) |
+| CON-09 | Empty API response → 0 records emitted (not error) |
+| CON-10 | Credentials stored in Vault at `wfca/spokes/{dept_id}/airbyte/{source_type}` — never in manifest |
+| CON-11 | Every connector has unit tests with mocked HTTP responses |
+| CON-12 | Every connector registered in init-airbyte.py + airbyte-vault-sync.py |
+| CON-13 | Every connector wired to destinations (S3 Iceberg Bronze + PostgreSQL staging) |
+| CON-14 | Every connector has a Dagster asset + dbt source entry |
+| CON-15 | PII fields marked `airbyte_secret: true` in spec.yaml |
+| CON-16 | Data classification assigned per connector (PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED) |
+
+## 9. Infrastructure (INF)
+
+| ID | Rule |
+|----|------|
+| INF-01 | Docker volumes as local bind mounts (.volumes/) — never named volumes |
+| INF-02 | .volumes/ gitignored but synced by Dropbox |
+| INF-03 | No Co-Authored-By or agent attribution in commits |
+| INF-04 | Agent artifacts (.anvil/, .claude/, .mcp.json) gitignored |
+| INF-05 | Squash commits before PR — main reads like a changelog |
+
+## 10. Completion audit
+
+Every non-trivial GitHub issue gets a completion verdict before it is closed. The `completion-auditor` agent reads the issue body's acceptance criteria, inspects shipped code/docs/tests, and writes a JSON verdict — never auto-closes.
+
+### When to invoke
+- Before closing any issue with explicit acceptance criteria
+- After every Sprint PR merges, for each `Closes #N` issue
+- When a reviewer challenges whether an AC is actually met
+
+### Contract
+- **Output:** `plans/<issue>-completion-audit.json` (JSON validated against `schemas/completion-audit-output.schema.json`)
+- **Validator:** `scripts/validate_completion_audit.py plans/<issue>-completion-audit.json` — exit 0 = valid schema, exit 1 = malformed
+- **Verdicts:** `approved` / `partial` / `rejected`. Only `approved` closes the issue. `partial` files a follow-up; `rejected` reopens with concrete gaps.
+
+### Workflow
+1. PR merges with `Closes #N` in description.
+2. Run completion-auditor against `#N` post-merge.
+3. Validate the JSON with `scripts/validate_completion_audit.py`.
+4. If `approved` → close the issue. Otherwise → file follow-up issue, leave `#N` open.
+
+See **ADR-010** (`docs/adr/010_completion_auditor_before_close.md`) for the full rationale and the schema for the verdict file.
+
+---
+
+## 11. Parallel-track pattern (successful precedent: Sprint v0.8.1)
+
+Sprint v0.8.1 (Hierarchy + E2E + Demo Clean) ran as 3 parallel tracks
+that merged cleanly:
+
+| Track | Branch | Scope | Issues | Verdict |
+|---|---|---|---|---|
+| 1 | `sprint-v0.8.1/track-1-hierarchy` | Hierarchy + RLS | #516-#524 | 8 approved + 1 approved_with_followups |
+| 2 | `sprint-v0.8.1/track-2-structural` | Break-glass + honest audit + data products | #525-#529 | 5 approved |
+| 3 | `sprint-v0.8.1/track-3-e2e` | E2E + demo | #530-#534 | 2 approved + 3 approved_with_followups |
+
+**Integration model:** Track 3 merged Track 1 and Track 2 into itself in
+sequence (Track 1 → Track 3 first, then Track 2 → Track 3). The final
+integration branch `sprint-v0.8.1-integration` was just a rename of the
+fully-merged Track 3. One migration-number collision (Track 1's
+`audit_log_rls_outcome` had taken 051; Track 2's `break_glass_audit` was
+also numbered 051) was resolved at integration time by renumbering
+Track 2's migrations 052-056. The rename was mechanical because
+`migrations/` files are independent units.
+
+**Why it worked:**
+
+- **Migrations partitioned by intent, not by author.** Track 1 owned
+  hierarchy + RLS migrations (045-051), Track 2 owned audit + dev-tools
+  + registry migrations (initially 051-055, renumbered to 052-056).
+  When tracks collided at the same migration number, the resolution was
+  obvious — the structural piece moved.
+- **Tests partitioned by file.** Each track wrote `tests/test_*.py` for
+  its own contract. No two tracks edited the same test file.
+- **Single Django app per track.** Track 1 owned `apps/audit`, Track 2
+  owned `apps/audit` extensions (break_glass.py, dev_elevate_session),
+  Track 3 owned `apps/registry` + `apps/transforms` + `apps/platform_admin`.
+  The one apps/audit overlap was resolved by Track 2 explicitly building
+  on top of Track 1's `rls_middleware.py` rather than rewriting it.
+- **Each track wrote its own completion audits.** Track 2 wrote
+  `plans/525-529-completion-audit.json` before merging; Track 3 wrote
+  `plans/530-534-completion-audit.json`; the sprint-close pass wrote
+  `plans/516-524-completion-audit.json` retroactively after audit-tool
+  was available.
+
+**When not to use this pattern:**
+
+- If two tracks need to edit `settings.py` or `docker-compose.yml`,
+  serialize them.
+- If a migration carries a destructive ALTER (DROP COLUMN, ALTER TYPE),
+  the migration must be a single track's responsibility — no parallel
+  rewriter.
+- If two tracks both write to `audit_log` schema, integration order
+  matters — the track that adds new columns must merge first, the
+  track that renames must merge second.
+
+---
+
+## 12. Backup & Restore (BAK)
+
+Before any destructive stack operation — `docker compose down -v`, bulk
+migration apply, schema rename, RLS policy rewrite — capture both an
+in-place rename and a SQL dump. The rename gives you a one-command
+recovery; the dump survives volume loss.
+
+### When to back up (mandatory)
+
+- **Before** `docker compose down -v` (wipes named volumes — Postgres
+  data, MinIO objects, Vault data, OpenSearch indexes).
+- **Before** running a migration batch larger than 3 files.
+- **Before** any `ALTER DATABASE`, `DROP DATABASE`, or `TRUNCATE` on
+  shared state.
+- **Before** an agent that says "wipe + reapply" anywhere in its prompt.
+- **Before** any merge to `develop` that introduces schema changes
+  (sprint integration PRs).
+- **Before** a `git push --force` that touches `main` or `develop`.
+
+Skipping the backup because "the tests pass locally" is the failure
+mode. Tests don't know about the orphan tables, ad-hoc DDL, and
+out-of-band seeded data that accumulate on a long-lived dev stack.
+
+### Backup procedure (two-layer)
+
+Layer 1 — in-place DB rename (instant rollback, survives container
+restart, lost on volume wipe):
+
+```bash
+TS=$(date +%Y%m%d_%H%M%S)
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "ALTER DATABASE ude_metadata RENAME TO ude_metadata_backup_${TS};"
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "CREATE DATABASE ude_metadata OWNER wfca;"
+```
+
+The rename is atomic, takes milliseconds, and leaves the old state
+queryable side-by-side. The new empty `ude_metadata` is ready for
+fresh migrations.
+
+Layer 2 — SQL dump (durable, survives volume loss):
+
+```bash
+TS=$(date +%Y-%m-%d_%H%M%S)
+BACKUP_DIR="backups/${TS}"
+mkdir -p "$BACKUP_DIR"
+
+# Primary metadata DB (whatever was renamed in Layer 1)
+docker exec psde-mz-postgres-1 pg_dump -U wfca \
+  -d ude_metadata_backup_${OLD_TS} --clean --if-exists \
+  | gzip > "$BACKUP_DIR/ude_metadata_pre_change.sql.gz"
+
+# Other Postgres DBs that hold state
+for db in ude_airbyte ude_keycloak ude_hive_metastore ude_openmetadata; do
+  docker exec psde-mz-postgres-1 pg_dump -U wfca -d $db \
+    --clean --if-exists | gzip > "$BACKUP_DIR/${db}.sql.gz"
+done
+
+# Vault paths (audit only — actual secrets stay in Vault data volume)
+VAULT_TOKEN=$(grep VAULT_DEV_ROOT_TOKEN docker-compose.yml \
+  | head -1 | sed -E 's/.*=([^ ]+).*/\1/' | tr -d "'\"")
+docker exec -e VAULT_TOKEN="$VAULT_TOKEN" psde-mz-vault-1 sh -c \
+  'VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_TOKEN" vault kv list -format=json wfca/spokes' \
+  > "$BACKUP_DIR/vault_spokes_list.json" 2>&1 || true
+
+ls -lh "$BACKUP_DIR/"
+```
+
+Commit nothing under `backups/` — `.gitignore` excludes it. The dumps
+exist for you and the next operator, not for CI.
+
+### Restore procedure
+
+Layer 1 rollback (fastest — DB still present, just renamed back):
+
+```bash
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "DROP DATABASE ude_metadata;"
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "ALTER DATABASE ude_metadata_backup_${TS} RENAME TO ude_metadata;"
+docker compose restart unification dagster-webserver dagster-daemon
+```
+
+The restart is mandatory — Django connection pools cache schema metadata.
+
+Layer 2 restore (volume wiped, only the SQL dump remains):
+
+```bash
+# 1. Drop the broken DB and recreate empty
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "DROP DATABASE IF EXISTS ude_metadata;"
+docker exec psde-mz-postgres-1 psql -U wfca -d postgres -c \
+  "CREATE DATABASE ude_metadata OWNER wfca;"
+
+# 2. Restore from the SQL dump
+gunzip -c backups/${TS}/ude_metadata_pre_change.sql.gz \
+  | docker exec -i psde-mz-postgres-1 psql -U wfca -d ude_metadata
+
+# 3. Verify migration tracker is sane
+docker exec psde-mz-postgres-1 psql -U wfca -d ude_metadata -c \
+  "SELECT version, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 5;"
+
+# 4. Restart consumers
+docker compose restart unification dagster-webserver dagster-daemon
+```
+
+If `ude_airbyte` or `ude_keycloak` were restored, restart the
+corresponding services too (`airbyte-server` pod for Airbyte; `keycloak`
+container for Keycloak — Keycloak rebuilds its cache on startup).
+
+### What's NOT covered
+
+- **Iceberg tables in MinIO** — backed up by mirroring the `minio_data`
+  volume separately (`docker run --rm -v psde-mz_minio_data:/d -v "$PWD/backups":/b alpine tar czf /b/minio-${TS}.tar.gz /d`).
+  Cheap and easy; do it before a Landing-tier rewrite.
+- **Vault secret values** — the dev token is in `docker-compose.yml`,
+  so re-seeding via `scripts/airbyte-vault-sync.py` is faster than
+  trying to restore Vault's internal state. The `vault_spokes_list.json`
+  snapshot tells you WHICH paths existed; the values come from the
+  source repo (`metadata/tenants/*.json`) or operator entry.
+- **k3d Airbyte cluster state** — Airbyte's config is in `ude_airbyte`
+  (Postgres, backed up above) plus its MinIO bucket inside the k3d
+  cluster. If the cluster is destroyed, `scripts/init-airbyte.py` +
+  the Postgres dump rebuilds the connection registry; the MinIO data
+  inside k3d is dev-only and not backed up by default.
+- **Git state** — branches and commits are remote; the local working
+  tree is not backup-worthy beyond `git stash` for in-flight edits.
+
+### Audit log of backups taken
+
+Every backup directory under `backups/` includes a `README.md` written
+by the operator (human or agent) describing:
+
+- What was about to change
+- The recovery one-liner specific to this snapshot
+- Whether the SQL dump is the canonical artifact or just belt-and-suspenders
+
+Without that note, six weeks later no one knows what
+`backups/2026-05-14_183504/` is for. The directory is useless if
+nobody can answer "do we still need this?"
+
+### Agent contract — when an agent must back up
+
+Any agent whose prompt or scope contains any of:
+
+- "wipe" / "drop" / "reset" / "fresh" applied to a database, volume, or schema
+- "apply migrations" with 3+ pending migrations
+- "down -v" or "rm -rf" on stack state
+- "force-push" / "reset --hard" on a shared branch
+- "TRUNCATE" / "DROP TABLE" / "DROP DATABASE"
+
+MUST execute the Layer 1 + Layer 2 backup procedure above before the
+destructive step, and MUST include the backup path in its handoff
+artifacts. If the agent skips backup, the integration owner blocks
+merge until proof of backup exists.
+
+This is the same gate as `CODE_REVIEW before TEST` — non-negotiable.

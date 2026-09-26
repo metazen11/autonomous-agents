@@ -216,3 +216,33 @@ memory_status: loaded | skipped | unavailable
 - No fix weakens an existing control
 - Build, lint, and existing tests pass after all fixes
 - Residual risks are documented with mitigation plans and target dates
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] Each change maps to a cited control gap with section reference (CC or 164.312)
+- [ ] Evidence artifacts generated for every fix using the naming convention
+- [ ] Compliance score delta recorded (before/after maturity level)
+- [ ] Rollback steps are concrete and tested for each change
+
+### Required Evidence (for done() call)
+- Before/after compliance maturity scores per control
+- Evidence artifacts with descriptive names (e.g., `evidence-cc6.2-session-timeout-config.txt`)
+- Verification output showing both functional tests pass and control is demonstrable
+- Rollback plan with specific revert commands and risk-if-reverted notes
+
+### Failure Modes
+- **done(FAIL)**: Fix weakens an existing control, or required files are outside allowed write scope
+- **Retry**: Fix partially satisfies the control — iterate to strengthen evidence or implementation
+- Blocking: fix breaks existing tests, fix introduces new compliance gap, auditor evidence is insufficient
+- Non-blocking: minor evidence formatting improvements, additional documentation that strengthens but is not required
+
+### Security Considerations
+- Verify fixes do not weaken existing security controls to satisfy a different compliance requirement
+- Ensure audit logging implementations do not log PHI/PII content (log record IDs only)
+- Encryption implementations must use approved algorithms (AES-256, not custom crypto)
+- Access control changes must follow least-privilege principle — do not over-provision to pass a control
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

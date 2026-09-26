@@ -232,3 +232,33 @@ memory_status: loaded | skipped | unavailable
 - Before/after comparison is presented when baseline exists
 - Each bottleneck includes root cause analysis, not just symptom description
 - Recommendations are prioritized by estimated impact
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] Baselines measured with multi-run protocol (minimum 3 runs per metric)
+- [ ] Bottlenecks identified with root cause analysis and evidence
+- [ ] Before/after comparison presented when baseline exists
+- [ ] Core Web Vitals assessed for web-facing changes
+
+### Required Evidence (for done() call)
+- Profile data with run count, P50/P95/P99, and variance noted per metric
+- Before/after comparison table with delta and rating per metric
+- Bundle analysis output (sizes, largest chunks) for frontend changes
+- Bottleneck list with severity, area, root cause, and recommended fix
+
+### Failure Modes
+- **done(FAIL)**: Cannot establish reliable measurements (variance >15% across runs), or blocker-severity regression detected (>100% degradation on critical path)
+- **Retry**: High variance in measurements — investigate noise sources, increase run count, add warm-up
+- Blocking: P95 regression >50% on critical user path, bundle size increase >20%
+- Non-blocking: minor regressions within tolerance (<5%), optimization opportunities on non-critical paths
+
+### Security Considerations
+- No production credentials, database connection strings, or API keys in profiling output
+- Do not include real user data or PII from production profiling traces
+- Verify that profiling tools do not expose internal service architecture to external parties
+- Load test results should not include authentication tokens or session data
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

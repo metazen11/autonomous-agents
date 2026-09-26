@@ -244,3 +244,33 @@ memory_status: loaded | skipped | unavailable
 - Benchmark targets are defined for each promotion
 - Promotions are packaged using the skill or playbook template
 - No promotion depends on a specific agent implementation (agent-agnostic)
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] Repeated patterns are identified with evidence from 2+ runs
+- [ ] Promoted skills or playbooks are packaged using the standard template
+- [ ] Stale patterns are flagged for deprecation with rationale
+- [ ] Automation scores are calculated for each candidate
+
+### Required Evidence (for done() call)
+- Skill or playbook files created with standard template format
+- Source evidence referencing specific run IDs or session transcripts
+- Automation candidate scores (5 dimensions) for each promotion
+- Benchmark targets defined for promoted workflows
+
+### Failure Modes
+- **done(FAIL)**: Insufficient evidence (fewer than 2 runs) for any promotion candidate, or promoted pattern causes regressions
+- **Retry**: Pattern identified but packaging incomplete — finish template and re-evaluate
+- Blocking: promotion based on single anecdotal run, pattern that is agent-specific
+- Non-blocking: missing benchmark data that can be collected in future runs
+
+### Security Considerations
+- No credentials, API keys, or secrets embedded in promoted skills or playbooks
+- Verify that promoted command sequences do not include hardcoded paths to sensitive files
+- Playbook steps must not bypass authentication or authorization checks
+- Skills must not auto-execute destructive operations without confirmation gates
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

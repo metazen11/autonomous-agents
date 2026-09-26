@@ -25,10 +25,15 @@ jobs:
         run: pip install jsonschema
 
       - name: Validate plan files
+        env:
+          # Pass the dispatch input through the environment, never interpolate it
+          # into the shell script — `${{ … }}` expansion would let a workflow_dispatch
+          # user inject arbitrary shell commands into the runner.
+          PLAN_FILE_INPUT: ${{ github.event.inputs.plan_file }}
         run: |
           FAILED=0
-          if [ -n "${{ github.event.inputs.plan_file }}" ]; then
-            FILES="${{ github.event.inputs.plan_file }}"
+          if [ -n "$PLAN_FILE_INPUT" ]; then
+            FILES="$PLAN_FILE_INPUT"
           else
             FILES=$(find plans/ -name '*.json' 2>/dev/null || true)
           fi

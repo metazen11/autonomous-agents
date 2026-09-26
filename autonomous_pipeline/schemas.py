@@ -175,8 +175,11 @@ class RunState:
 
 @dataclass(slots=True)
 class RuntimeConfig:
-    task_source: Literal["todo_json", "github", "file", "prompt"] = "todo_json"
+    task_source: Literal["todo_json", "github", "asana", "file", "prompt"] = "todo_json"
     todo_path: str = "todo.json"
+    asana_project_gid: str | None = None
+    asana_workspace_gid: str | None = None
+    asana_default_section_gid: str | None = None
     task_file: str | None = None
     prompt_text: str | None = None
     artifacts_dir: str = "artifacts"

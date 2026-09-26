@@ -17,6 +17,9 @@ def load_runtime_config(repo_root: str | Path) -> RuntimeConfig:
     return RuntimeConfig(
         task_source=payload.get("task_source", "todo_json"),
         todo_path=payload.get("todo_path", "todo.json"),
+        asana_project_gid=payload.get("asana_project_gid"),
+        asana_workspace_gid=payload.get("asana_workspace_gid"),
+        asana_default_section_gid=payload.get("asana_default_section_gid"),
         task_file=payload.get("task_file"),
         prompt_text=payload.get("prompt_text"),
         artifacts_dir=payload.get("artifacts_dir", "artifacts"),

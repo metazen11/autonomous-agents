@@ -247,3 +247,33 @@ memory_status: loaded | skipped | unavailable
 - BAA status is evaluated for all third-party services handling PHI
 - Findings distinguish between "control not implemented" and "control exists but insufficient"
 - Every recommendation includes the specific HIPAA section it satisfies
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All five 164.312 technical safeguard areas are assessed (access, audit, integrity, auth, transmission)
+- [ ] PHI data flows are mapped from entry to deletion
+- [ ] Encryption verified at rest and in transit with specific evidence
+- [ ] BAA coverage evaluated for all third-party services handling PHI
+
+### Required Evidence (for done() call)
+- Checklist results for each 164.312 sub-section with pass/fail/partial
+- PHI flow map covering entry, processing, storage, access, transmission, and deletion
+- Encryption verification output (TLS check, RDS encryption status, KMS key config)
+- Audit logging coverage assessment with gaps identified
+
+### Failure Modes
+- **done(FAIL)**: PHI scope cannot be determined (no data flow visibility), or blocker-severity gaps in access control or transmission security
+- **Retry**: Partial evidence available — request additional access or documentation to complete assessment
+- Blocking: unencrypted PHI at rest or in transit, missing authentication on PHI endpoints, no audit logging
+- Non-blocking: documentation gaps for existing controls, minor configuration improvements
+
+### Security Considerations
+- Do not disclose actual PHI or patient data in audit output
+- Do not include real credentials or connection strings in evidence artifacts
+- Findings must reference control gaps without providing exploitation instructions
+- Mark audit reports as confidential — HIPAA compliance details are sensitive
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail

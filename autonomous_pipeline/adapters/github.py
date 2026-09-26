@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
+from autonomous_pipeline.adapters._checklist import extract_checklist
 from autonomous_pipeline.adapters.base import TaskAdapter, TaskAdapterError
 from autonomous_pipeline.schemas import PromotionCandidate, Task, TaskUpdate
 
@@ -99,6 +101,29 @@ class GitHubAdapter(TaskAdapter):
 
         return self.get_task(task_id)
 
+    def create_item(
+        self,
+        *,
+        title: str,
+        body: str,
+        criteria: list[str],
+        labels: list[str],
+    ) -> tuple[str, str]:
+        notes = body
+        if criteria:
+            notes = notes + "\n\n" + "\n".join(f"- [ ] {c}" for c in criteria)
+        args = ["issue", "create", "--title", title, "--body", notes]
+        for label in labels:
+            args.extend(["--label", label])
+        # `gh issue create` does not support --json; it prints the new issue's
+        # URL on stdout (e.g. https://github.com/owner/repo/issues/42). Parse the
+        # trailing issue number from that URL.
+        url = self._gh(args).strip().splitlines()[-1].strip()
+        match = re.search(r"/issues/(\d+)\b", url)
+        if not match:
+            raise TaskAdapterError(f"could not parse issue number from gh output: {url!r}")
+        return match.group(1), url
+
     def create_follow_up(self, item: PromotionCandidate) -> str | None:
         body_parts = [item.description]
         if item.expected_benefit:
@@ -136,7 +161,7 @@ class GitHubAdapter(TaskAdapter):
     def _normalize_issue(self, issue: dict) -> Task:
         labels = [label["name"] for label in issue.get("labels", [])]
         priority = _derive_priority(labels)
-        acceptance_criteria = _extract_checklist(issue.get("body", ""))
+        acceptance_criteria = extract_checklist(issue.get("body", ""))
         return Task(
             id=str(issue["number"]),
             title=issue["title"],
@@ -190,12 +215,3 @@ def _derive_priority(labels: list[str]) -> str:
     if "priority:low" in labels:
         return "low"
     return "medium"
-
-
-def _extract_checklist(body: str) -> list[str]:
-    lines = []
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if line.startswith("- [ ] "):
-            lines.append(line[6:])
-    return lines

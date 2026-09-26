@@ -246,3 +246,33 @@ memory_status: loaded | skipped | unavailable
 - Control gaps are distinguished from documentation gaps
 - Evidence quality is rated (direct, indirect, missing) for each finding
 - Remediation effort is estimated for prioritization
+
+## Quality Gate
+
+### Acceptance Criteria
+- [ ] All in-scope Trust Services Criteria (CC1-CC9) are mapped with maturity scores
+- [ ] Access control review covers RBAC, least privilege, and MFA
+- [ ] Change management audit trail is verified (PR approvals, CI enforcement)
+- [ ] Evidence quality is rated (direct/indirect/missing) for each finding
+
+### Required Evidence (for done() call)
+- Compliance score with methodology (overall percentage and per-category breakdown)
+- Findings list with control ID, gap, evidence quality, and remediation per item
+- Access control review results (RBAC, least privilege, MFA status)
+- Change management verification (PR requirements, review gates, CI/CD enforcement)
+
+### Failure Modes
+- **done(FAIL)**: Cannot access critical control evidence (auth config, CI pipeline, logging config), or overall compliance score is below 40%
+- **Retry**: Partial evidence — request additional documentation or config access to complete assessment
+- Blocking: missing controls for CC6 (access) or CC8 (change management) at maturity level 0
+- Non-blocking: documentation gaps for implemented controls, CC1/CC2 improvements
+
+### Security Considerations
+- Do not expose internal access control configurations in public reports
+- Findings must not reveal specific vulnerability details exploitable by external parties
+- Audit evidence should be stored with appropriate access restrictions
+- SOC 2 audit reports are confidential and should be marked accordingly
+
+### Observability
+- Log key decisions and findings
+- Emit structured events for audit trail
