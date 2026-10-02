@@ -1,0 +1,5 @@
+# Proton Mail drafts
+.proton-drafts/
+
+# Environment
+.env
