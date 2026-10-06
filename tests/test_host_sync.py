@@ -295,6 +295,9 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("Git distribution source: `https://github.com/metazen11/autonomous-agents.git`", instructions)
             self.assertIn("Prompt pack source: `~/_CODING/autonomous_agents_mds/`", instructions)
             self.assertIn("Prompt pack sync: `cd ~/_CODING/autonomous_agents_mds", instructions)
+            # Installed files live outside the repo; a relative docs/ pointer dangles there.
+            self.assertNotIn("`docs/contract-reference.md`", instructions)
+            self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)
 
     def test_install_from_git_command_uses_repo_as_distribution_source(self) -> None:
         command = install_from_git_command(
