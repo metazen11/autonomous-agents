@@ -675,7 +675,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "1. **Codex CLI** — `codex review --uncommitted` (pre-commit) or `codex review --base origin/<integration_trunk>` (post-commit). Fall back if missing, erroring, or limit-hit.",
         "2. **Anvil `aa_code_reviewer`** via `mcp__anvil__worktree_run_subagent`. Fall back if unavailable or erroring.",
         "3. **Claude `aa_code_reviewer`** subagent via the Agent tool.",
-        "Invocation examples: `docs/contract-reference.md`.",
+        "Invocation examples: `~/_CODING/autonomous_agents_mds/docs/contract-reference.md`.",
         "- **MUST invoke** before any `/reconcile`; surface findings verbatim to the reconciler; an unresolved blocking finding aborts the push.",
         "- **MUST invoke** for high-blast-radius diffs of any size (next.config.*, tsconfig, Dockerfile, IaC, service worker, hooks, CI configs, dependency manifests; silent no-ops hide there) and when the diagnosis pivoted 3+ times.",
         "- **SHOULD invoke** before any non-trivial commit (trivial = docs/typos/comments).",
