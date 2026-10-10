@@ -728,6 +728,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "- Optimize workflows, context usage (prompts, tool schemas, instruction files), CI/CD time, and response latency. Leave anything you touch faster or smaller.",
         "- Use established, maintained libraries over writing code. Bring a dependency in-house only once it is a proven liability (security, abandonment, performance, licensing), recorded in an ADR.",
         "- Take the shortest path to done: the smallest change, the fewest process steps. Delete process that does not catch real failures.",
+        "- Always fix the root cause, never the symptom. Trace the failure to where it originates and fix it once there, so every caller and every recurrence is covered. A workaround is only a stopgap with a filed issue for the real fix.",
         "- Keep the safety floor: input validation, secrets handling, backups before destructive actions, green CI, and required e2e gates.",
         "",
         "## Host Capabilities",
