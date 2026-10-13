@@ -731,6 +731,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         "- Use established, maintained libraries over writing code. Bring a dependency in-house only once it is a proven liability (security, abandonment, performance, licensing), recorded in an ADR.",
         "- Take the shortest path to done: the smallest change, the fewest process steps. Delete process that does not catch real failures.",
         "- Keep the safety floor: input validation, secrets handling, backups before destructive actions, green CI, and required e2e gates.",
+        "- Communicate briefly: answer first, a few short lines, no recaps or repeated status blocks. Keep tool output small (filter, `tail`, counts). Detail belongs in commits, issues and reports, not chat. Tokens are a cost like any other.",
         "",
         "## Host Capabilities",
         f"- Supported capability tags: {', '.join(spec.capability_tags)}",
