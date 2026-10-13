@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "kind": "protected_branch_redirect",
+  "timestamp": "2026-07-07 22:53:00",
+  "original_branch": "dev",
+  "redirected_branch": "work/session-20260707",
+  "commit_sha": "e72b0cc70ed01913c1dffe1af256cc41979775ee",
+  "summary": "1 new"
+}

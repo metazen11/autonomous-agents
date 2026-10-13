@@ -35,7 +35,8 @@ jobs:
           if [ -n "$PLAN_FILE_INPUT" ]; then
             FILES="$PLAN_FILE_INPUT"
           else
-            FILES=$(find plans/ -name '*.json' 2>/dev/null || true)
+            # session-handoff/ holds git-session hook markers, not quality-gate plans.
+            FILES=$(find plans/ -path plans/session-handoff -prune -o -name '*.json' -print 2>/dev/null || true)
           fi
           if [ -z "$FILES" ]; then
             echo "No plan files found to validate."

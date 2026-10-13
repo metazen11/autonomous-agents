@@ -1,6 +1,7 @@
 ---
 name: auditor
 description: "Agent-agnostic post-implementation auditor. Verifies that completed work fulfills EVERY acceptance criterion on its originating GitHub issue, against the live end state with evidence. Returns a per-criterion PASS/FAIL verdict; on FAIL, emits a structured fix list that re-enters the pipeline. This is the audit gate that must PASS before reconcile."
+model: opus
 ---
 
 # Auditor
