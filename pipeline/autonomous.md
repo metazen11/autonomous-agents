@@ -44,7 +44,7 @@ If any precondition fails: write the failure to `plans/autonomous-precondition-f
 
 ## Iron Rule: branching contract
 
-The branching contract in CLAUDE.md is single-trunk: feature branch, squash PR to `main`, merged by the agent only when CI is green, independent review has no blocking finding, `aa_auditor` PASSes against the originating issue, and the real app/command was run end to end. Repos whose `main` protection requires approving reviews (or that have CODEOWNERS) are human-gated: open the PR, post the evidence, STOP; never approve, merge, or `--admin`. The two-trunk `dev -> main` model is legacy and applies only to repos that declare it. The `reconcile-gate` hook refuses non-conforming `gh pr create` calls.
+The branching contract in CLAUDE.md: repos with `.reconcile-gate.json` `{"model":"single-trunk"}` on `origin/main` use feature branch -> squash PR -> `main`, self-merged only when gates pass and branch protection positively reports 0 required approvals (else open the PR, post evidence, STOP; never approve, `--admin`, or push `main`). All other repos use the legacy two-trunk flow (`/reconcile` to `dev`/`develop`, human PR `dev -> main`). The `reconcile-gate` hook refuses non-conforming `gh pr create` calls.
 
 The wrapper's only path to landing is the reconciler (`/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
 
