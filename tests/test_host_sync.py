@@ -302,12 +302,15 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("required_approving_review_count == 0", instructions)
             self.assertIn("never creates `dev`", instructions)
             self.assertIn("The ORCHESTRATING agent", instructions)
-            self.assertIn("permissions.admin == true", instructions)
+            self.assertNotIn("permissions.admin", instructions)
+            self.assertIn("--match-head-commit", instructions)
+            self.assertIn("An unprotected trunk is human-gated", instructions)
             rule = instructions[instructions.index("**Self-merge permission"):].split("\n")[0]
             self.assertIn("agent-gate", rule)
-            self.assertIn("modify branch protection or rulesets", instructions)
+            self.assertIn(".github/rulesets/**", instructions)
             self.assertIn("Operator approval is still required", instructions)
             self.assertNotIn("= fast-path", instructions)
+            self.assertNotIn("counts as", instructions.split("**Self-merge permission")[1].split("**MUST NOT")[0])
             self.assertNotIn("reconciler MUST create `dev`", instructions)
             self.assertNotIn("Pre-live delivery mode", instructions)
             # Installed files live outside the repo; a relative docs/ pointer dangles there.
