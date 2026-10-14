@@ -301,6 +301,7 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("audit: PASS <sha>", instructions)
             self.assertIn("required_approving_review_count == 0", instructions)
             self.assertIn("never creates `dev`", instructions)
+            self.assertIn("The ORCHESTRATING agent", instructions)
             self.assertIn("permissions.admin == true", instructions)
             self.assertNotIn("= fast-path", instructions)
             self.assertNotIn("reconciler MUST create `dev`", instructions)
