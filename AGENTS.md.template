@@ -29,7 +29,7 @@ Each marker is a JSON file. The current schema is:
 For each marker found:
 
 1. Inspect the redirected branch + commit (`git show <commit_sha>`)
-2. Decide if the work belongs on the integration trunk via `/reconcile`, stays on a working branch for further work, or should be discarded
+2. Decide if the work belongs on the trunk via PR (`/reconcile`), stays on a working branch for further work, or should be discarded
 3. After acting, move the marker to `plans/session-handoff/processed/` (the hook never deletes — that's the agent's responsibility, with an audit trail)
 
 This is agent-agnostic — Claude Code, Cursor, CI runners, and ad-hoc tools all follow the same rule. The hook is the writer; the agent is the reader and processor.

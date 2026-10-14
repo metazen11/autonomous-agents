@@ -295,6 +295,13 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("Git distribution source: `https://github.com/metazen11/autonomous-agents.git`", instructions)
             self.assertIn("Prompt pack source: `~/_CODING/autonomous_agents_mds/`", instructions)
             self.assertIn("Prompt pack sync: `cd ~/_CODING/autonomous_agents_mds", instructions)
+            # Single-trunk default; two-trunk is legacy; human gate is mechanical.
+            self.assertIn("single trunk by default", instructions)
+            self.assertIn("required_approving_review_count > 0", instructions)
+            self.assertIn("Legacy / opt-in two-trunk model", instructions)
+            self.assertIn("It MUST NOT create `dev`", instructions)
+            self.assertNotIn("reconciler MUST create `dev`", instructions)
+            self.assertNotIn("PRs are created ONLY for", instructions)
             # Installed files live outside the repo; a relative docs/ pointer dangles there.
             self.assertNotIn("`docs/contract-reference.md`", instructions)
             self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)

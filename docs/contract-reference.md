@@ -10,7 +10,7 @@ Cascade order and fallback triggers are defined in the rendered instructions. Ex
 
 **Tier 1 - Codex CLI** (`codex review`; independent context, good at catching silent no-ops such as an
 edit to the wrong config key or a key the framework ignores):
-- Post-commit, pre-push: `codex review --base origin/<integration_trunk>`
+- Post-commit, pre-merge: `codex review --base origin/<trunk>`
 - Pre-commit, staged work: `codex review --uncommitted`
 - Custom focus: pipe instructions via stdin or pass as PROMPT.
 - Fall back when: `codex` not on PATH, binary errors, API call fails, usage limit hit.
@@ -43,12 +43,12 @@ fresh context with no in-session memory):
 ```
 Agent({
   subagent_type: 'aa_code_reviewer',
-  description:   'Pre-reconcile code review',
-  prompt:        'Review the diff between origin/<integration_trunk> and HEAD. Surface blocking issues, simplification opportunities, and DRY violations. Acceptance criteria: <pull from task or commit body>.'
+  description:   'Pre-merge code review',
+  prompt:        'Review the diff between origin/<trunk> and HEAD. Surface blocking issues, simplification opportunities, and DRY violations. Acceptance criteria: <pull from task or commit body>.'
 })
 ```
 
-Output must still be surfaced verbatim to the reconciler; blocking findings still abort the push.
+Output must still be surfaced verbatim to the reconciler; blocking findings still block the merge.
 
 ## CTO continuous-improvement agents
 

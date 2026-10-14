@@ -36,7 +36,7 @@ Before any phase runs, verify ALL of these. A failure stops the wrapper with `ne
 2. **REPO_INDEX.json is fresh.** `make index --check` exit 0, OR regenerated within the last 10 commits. CLAUDE.md line 21.
 3. **Runaway-subagent detector is clean.** `scripts/detect_runaway_subagents.sh 5` exits 0. If non-zero, follow `docs/runbooks/runaway-subagent.md` BEFORE proceeding.
 4. **Reconcile lock available or owned by us.** `scripts/reconcile_lock.sh status` either reports `(no lock)` or a stale-PID entry the wrapper can clear via re-acquire.
-5. **Working branch is safe.** Not the production trunk, not the integration trunk; clean tree (no uncommitted changes); no in-progress rebase.
+5. **Working branch is safe.** Not the trunk (and not any `dev`/`develop` integration branch); clean tree (no uncommitted changes); no in-progress rebase.
 6. **`make start --check` exit 0.** Dependencies + env are sane. Doesn't change state.
 7. **`gh auth status` shows the expected account.** For `metazen11/psde-os` work, account must be `metazen11`, NOT `wfca-mz` (which lacks repo visibility — see memory `reference_gh_auth.md`).
 
@@ -44,9 +44,9 @@ If any precondition fails: write the failure to `plans/autonomous-precondition-f
 
 ## Iron Rule: branching contract
 
-This wrapper MUST NOT open PRs. The branching contract in CLAUDE.md says PRs are only for `integration-trunk → production-trunk` (`develop → main`), human-reviewed. The `reconcile-gate` hook will refuse non-conforming `gh pr create` calls.
+The branching contract in CLAUDE.md is single-trunk: feature branch, squash PR to `main`, merged by the agent only when CI is green, independent review has no blocking finding, `aa_auditor` PASSes against the originating issue, and the real app/command was run end to end. Repos whose `main` protection requires approving reviews (or that have CODEOWNERS) are human-gated: open the PR, post the evidence, STOP; never approve, merge, or `--admin`. The two-trunk `dev -> main` model is legacy and applies only to repos that declare it. The `reconcile-gate` hook refuses non-conforming `gh pr create` calls.
 
-The wrapper's only path to integration is `/reconcile` (invoked inside `/autonomous-drain` Lane B per issue #721). Replace any "open a PR" language from prior versions of this skill with "run `/reconcile`."
+The wrapper's only path to landing is the reconciler (`/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
 
 ## Iron Rule: worktree isolation
 

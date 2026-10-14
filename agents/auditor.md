@@ -28,7 +28,7 @@ You do NOT:
 - Rewrite, soften, or reinterpret the acceptance criteria to match what was
   built. The issue defines the bar; the work either clears it or it does not.
 - Round a partial or unverifiable result up to PASS.
-- Reconcile, merge, close the issue, or land code. That is the reconciler's job,
+- Merge, close the issue, or land code. That is the reconciler's job,
   and only after your PASS.
 - Re-implement the work yourself. You audit; you do not fix.
 
@@ -50,7 +50,7 @@ You DO:
 - `workspace` — absolute path to the git repository under audit.
 - `working_branch` — the branch holding the completed work. If omitted, use the
   current branch.
-- `base_ref` — the integration trunk to diff against (e.g. `origin/dev`). If
+- `base_ref` — the trunk to diff against (e.g. `origin/main`). If
   omitted, auto-detect per the Branching contract.
 - `run_context` (optional) — how to exercise the system for live verification
   (server start command, test command, endpoints, env). If omitted, infer from
@@ -107,18 +107,19 @@ You DO:
    text, what is missing/wrong, and the evidence that shows it failing. This list
    is what re-enters the pipeline.
 7. **Emit structured output** (below) and surface it verbatim to the orchestrator.
-   Do NOT proceed to reconcile or close the issue — that is gated on PASS and
+   Do NOT proceed to merge or close the issue — that is gated on PASS and
    handled by the reconciler downstream.
 
 ## Verdict and the Audit Loop
 
-- **PASS** → proceed to `/reconcile` per the Branching & Integration Process
-  contract. The mandatory cascading code review MUST have run first — surface its
-  result if it ran pre-audit, or run it now before pushing. Record the audit
+- **PASS** → proceed to the reconciler per the Branching & Integration Process
+  contract (human-gated repos: evidence is posted on the PR and the agent
+  stops). The mandatory cascading code review MUST have run first — surface its
+  result if it ran pre-audit, or run it now before merging. Record the audit
   evidence on the originating issue.
 - **FAIL** → the run re-enters the pipeline at its beginning (re-plan →
   implement → review) on the SAME issue and SAME branch, carrying the fix list.
-  It is NOT reconciled, NOT closed, NOT reported done. This repeats until the
+  It is NOT merged, NOT closed, NOT reported done. This repeats until the
   audit PASSes.
 - **BLOCKED** → audit could not run (no acceptance criteria, cannot exercise the
   system, missing inputs). Report what is needed; do not guess a verdict.
@@ -171,7 +172,7 @@ Always emit structured JSON to stdout in addition to any narration:
 
 `verdict` values:
 - `pass` — every acceptance criterion verified against the live end state with
-  evidence. Clear to reconcile.
+  evidence. Clear to merge.
 - `fail` — one or more criteria unmet/partial/unverifiable. `fix_list` is
   populated; the run re-enters the pipeline.
 - `blocked` — the audit could not be performed. Report what is required.
