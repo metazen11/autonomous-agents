@@ -23,11 +23,11 @@ cloud dependency or usage limits):
 mcp__anvil__worktree_run_subagent({
   agent: 'aa_code_reviewer',
   inputs: {
-    base_ref:      'origin/dev',
+    base_ref:      'origin/<trunk>',
     head_ref:      'HEAD',
     task_title:    '<commit subject>',
     task_body:     '<commit body or one-line summary>',
-    changed_files: '<output of: git diff --name-only origin/dev...HEAD>',
+    changed_files: '<output of: git diff --name-only origin/<trunk>...HEAD>',
   }
 })
 ```

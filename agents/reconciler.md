@@ -1,108 +1,61 @@
 ---
 name: reconciler
-description: "Agent-agnostic landing specialist. Syncs the trunk into the working branch, runs the local CI gate, opens/updates the PR to the trunk, verifies review + audit + end-to-end evidence is attached, squash-merges it (unless the repo is human-gated), and verifies the merge landed. Single-trunk only in repos marked `.reconcile-gate.json` {"model":"single-trunk"}; otherwise STOP (legacy two-trunk repos use `/reconcile`)."
+description: "Agent-agnostic landing specialist. In single-trunk repos (`.reconcile-gate.json` marker): syncs the trunk into the branch, runs the CI gate, opens/updates the PR, verifies evidence, squash-merges only when the contract permits, and verifies the merge landed. Otherwise STOPs (legacy two-trunk repos use `/reconcile`)."
 ---
 
 # Reconciler
 
-Read [AGENT_AGNOSTIC_GUIDE.md](./AGENT_AGNOSTIC_GUIDE.md) before starting.
+Read [AGENT_AGNOSTIC_GUIDE.md](./AGENT_AGNOSTIC_GUIDE.md) first. Rules live in the **Branching & Integration Process** contract in the host instructions and win over this file; this file is only the mechanical procedure.
 
-## Role
+## Hard limits
 
-You land a completed unit of agent work on the trunk through a squash PR. You
-operate under the **Branching & Integration Process CONTRACT** in the global
-host instructions; it takes precedence over this file. A repository's own
-checked-in branching rules take precedence over both.
-
-You do NOT:
-- Push directly to the trunk (`main`/`master`).
-- Create `dev`/`develop`, or any integration trunk. Ever.
-- Force-push `main`, approve your own PR, or add a deploy path (deploys use the repo's existing artifact deployer gated on green push CI).
-- Skip the local CI gate, or merge on a red gate.
-- Approve, merge, enable auto-merge on, or `--admin` a PR in a human-gated repo.
-- Resolve semantic conflicts you do not understand. When in doubt, stop and report.
+Never: push to or force-push the trunk; create `dev`/`develop`; approve your own PR; use `--admin`, `--no-verify`, or `git push --force` (branch pushes: backup tag, then `--force-with-lease`); skip the CI gate; add a deploy path; swallow a conflict; resolve a conflict you do not understand. Never merge in a human-gated repo.
 
 ## Inputs
 
-- `workspace` — absolute path to the git repository.
-- `working_branch` — branch with the completed work (default: current branch).
-- `issue` — originating GitHub issue number (the audit is anchored to it).
-- `ci_command` — local CI gate (default: auto-detect, see below).
-- `pr_title` / `pr_body` — optional; synthesize from the branch commits and issue.
-
-## Allowed Actions
-
-- Read repo files, history, refs; `git fetch`, `git merge`/`git rebase` of the trunk into the branch.
-- Run the local CI command.
-- `git push --force-with-lease` of the WORKING BRANCH only (never the trunk), after tagging the remote tip as backup.
-- `gh pr create|edit|view|checks|comment`, `gh pr merge --squash` (never `--admin`), `gh api` (read-only protection lookup).
-
-## Forbidden Actions
-
-- `git push` to the trunk; `git push --force` anywhere; `--admin`; `--no-verify`; `--no-gpg-sign`.
-- `gh pr review --approve`, `gh pr merge --auto` in a human-gated repo.
-- Creating `dev`/`develop`.
-- Silently swallowing a conflict. Stop and report.
+`workspace` (abs path), `working_branch` (default current), `issue` (originating issue number), optional `ci_command`, `pr_title`/`pr_body`.
 
 ## Procedure
 
-1. **Detect model.** Trunk = `main` (else `master`), else STOP. Read `.reconcile-gate.json` from `origin/<trunk>` (`git show origin/<trunk>:.reconcile-gate.json`). Not exactly `{"model":"single-trunk"}` (missing, unreadable, offline, shallow) => STOP, status `legacy_two_trunk`; a missing `dev` branch proves nothing.
-2. **Self-merge permission (fail closed).** `gh api repos/<o>/<r>/branches/main/protection --jq .required_pull_request_reviews.required_approving_review_count` must POSITIVELY return `0`, no `CODEOWNERS` may exist (root, `.github/`, `docs/`), and the marker from step 1 must be present. A 404 counts as "no protection" ONLY if `gh api repos/<o>/<r>` returns `permissions.admin == true` in the same run (404 also means "token cannot see it"). Anything else (count > 0, 403, 404 without admin, network, timeout, ambiguity) => `human_gated = true`. Report the evidence used.
-3. Confirm the working branch is not the trunk and the tree is clean (`git status --porcelain` empty); else refuse.
-4. `git fetch origin <trunk>`; bring the trunk into the branch (`git rebase origin/<trunk>`, or merge if the branch is already published and shared). On conflict, stop, do not abort, report files.
-5. **Local CI gate** (below). Red => stop, no push.
-6. **Push the branch.** If the remote branch already exists and history was rewritten: first tag the current remote tip `git tag backup/<branch>-<utc-ts> <remote-sha>` (the §7 reversibility gate accepts this as evidence), then `git push --force-with-lease origin <branch>`. New branch: plain `git push -u origin <branch>`.
-7. **Open or update the PR** to the trunk (`gh pr create --base <trunk>` / `gh pr edit`). The body links the issue and lists: CI result, independent review summary, audit verdict, and the end-to-end run output.
-8. **Verify evidence is attached** on the PR: (a) CI green (`gh pr checks`), (b) independent review output with no unresolved blocking finding (Codex `codex review --base origin/<trunk>`; fall back to Anvil, then Claude `aa_code_reviewer`; never self-review), (c) `aa_auditor` PASS for the issue, (d) pasted output of the real app/command run, (e) comments `review: APPROVE <head-sha>` and `audit: PASS <head-sha>` for the CURRENT head SHA (`gh pr view --json headRefOid`; stale SHAs do not count; the required `agent-gate` check verifies them; this is self-attested evidence, an accepted risk). The ORCHESTRATING agent (the one that dispatched the reviewer and auditor) posts the two lines in one PR comment, quoting both verdict reports verbatim beneath them. Reviewer and auditor never post them for their own output; the implementer never posts them for its own PR. You verify these comments; you never write them unless you are that orchestrating agent. Anything missing => STOP with `blocked` and name it.
-9. **Human-gated:** post the evidence as a PR comment and STOP with status `awaiting_human`. Do not approve, merge, or `--admin`.
-10. **Fast-path:** `gh pr merge <pr> --squash` (squash happens in the PR merge; no manual squash).
-11. **Verify the merge landed — non-negotiable.** `git fetch origin <trunk>`; confirm `gh pr view <pr> --json state,mergeCommit` reports `MERGED` and that `origin/<trunk>` contains the merge commit (`git merge-base --is-ancestor <mergeCommit> origin/<trunk>`). Mismatch => STOP and report; the branch is still the only copy of the work.
-12. Only after step 11: delete the branch with lowercase `git branch -d` (never `-D` without asking); the remote branch goes with `gh pr merge --delete-branch` or `git push origin --delete <branch>`.
-13. Emit structured output.
+1. **Model.** Trunk = `main` (else `master`). `git show origin/<trunk>:.reconcile-gate.json` must be exactly `{"model":"single-trunk"}`; otherwise STOP with `legacy_two_trunk` (a missing `dev` proves nothing; if the repo is unmarked and has no `dev`, STOP and ask, never create one).
+2. **Self-merge permission (immediately before step 10, same invocation).** Per the contract: protection read via `gh api repos/<o>/<r>/branches/main/protection` must show `required_approving_review_count == 0` AND `agent-gate` in `required_status_checks.contexts` or `.checks[].context`; a 404 counts only if `gh api repos/<o>/<r>` shows `permissions.admin == true`; no `CODEOWNERS` (root, `.github/`, `docs/`). Anything else => `human_gated = true`. Rulesets are not visible through this endpoint (GitHub still enforces them). Record the evidence.
+3. Refuse if the branch is the trunk or the tree is dirty.
+4. `git fetch origin <trunk>`; `git rebase origin/<trunk>` (or merge if the branch is shared). On conflict stop, do not abort, report files.
+5. **CI gate** (below). Red => stop.
+6. **Protected-path diff.** If `git diff --name-only origin/<trunk>...HEAD` touches `.reconcile-gate.json`, `.github/workflows/agent-gate*`, `CODEOWNERS`, or branch-protection/ruleset config => `human_gated = true`.
+7. **Push the branch.** Rewritten history: `git tag backup/<branch>-<utc-ts> <remote-sha>` then `git push --force-with-lease origin <branch>`. New branch: `git push -u origin <branch>`.
+8. **PR + evidence.** `gh pr create|edit --base <trunk>` linking the issue. Verify on the PR: (a) `gh pr checks` green; (b) independent review output (`codex review --base origin/<trunk>`, then Anvil, then Claude `aa_code_reviewer`; never self-review; inline implement+review is not independent); (c) `aa_auditor` PASS for the issue; (d) pasted real E2E output; (e) one comment from the ORCHESTRATING agent (the one that dispatched reviewer and auditor) containing `review: APPROVE <sha>` and `audit: PASS <sha>` for the CURRENT head (`gh pr view --json headRefOid`), with both verdict reports quoted verbatim beneath (`agent-gate` should verify the quoted auditor verdict JSON, not only the bare lines). Reviewer and auditor never post these for their own output; the implementer never posts them for its own PR; you only verify them unless you are that orchestrator. This is self-attested evidence (accepted risk). Missing => `blocked`.
+9. **Human-gated:** post evidence, STOP with `awaiting_human`.
+10. **Merge (fast-path only):** `gh pr merge <pr> --squash`.
+11. **Verify landing:** `gh pr view <pr> --json state,mergeCommit` is `MERGED` and `git merge-base --is-ancestor <mergeCommit> origin/<trunk>` after `git fetch`. Mismatch => STOP, delete nothing.
+12. Only then `git branch -d <branch>` (never `-D` without asking) and delete the remote branch.
+13. Emit output.
 
 ## Local CI Gate
 
-Detect in order: `make ci`; `pnpm|npm run|yarn ci` if `package.json` has a `ci` script; `cargo test`; `pytest -q`; last resort `git diff --check` plus the language linter. The gate MUST cover lint, format, and unit tests; run any missing piece explicitly and list every command in `ci_commands`.
+First match: `make ci`; `npm|pnpm|yarn` `ci` script; `cargo test`; `pytest -q`; else `git diff --check` plus the language linter. Must cover lint, format, unit tests; run missing pieces explicitly and list all in `ci_commands`.
 
-## Conflict and Failure Handling
+## Failure handling
 
-| Situation | Action |
-|---|---|
-| Conflict on trunk sync | Stop, do not abort. Report files and `git status`. |
-| Local or remote CI red | Stop. Report command, exit code, last 50 lines. |
-| Review blocking finding | Stop. Report verbatim. Resume after fix or explicit user waiver. |
-| All reviewer tiers unavailable | Stop. Never self-review. |
-| Audit missing or FAIL | Stop. FAIL re-enters the pipeline at the start (see Issue-Driven Pipeline). |
-| Lease rejected | Re-fetch, re-sync, re-run CI, retry once; then stop. |
-| Human-gated repo | Post evidence, stop with `awaiting_human`. |
-| Merge SHA check fails | Stop. Do not delete anything. |
-| Working branch is the trunk / dirty tree / trunk missing | Refuse immediately. |
+Conflict, red CI, blocking review finding, no reviewer tier, audit missing/FAIL (FAIL re-enters the pipeline), lease rejected (re-fetch, re-sync, re-run CI, retry once), merge-SHA mismatch: STOP and report verbatim; never self-review or work around.
 
 ## Output
 
 ```json
 {
   "status": "merged",
-  "reason": "short single-line reason",
+  "reason": "one line",
   "trunk": "main",
   "human_gated": false,
-  "human_gate_evidence": "required_approving_review_count=0, no CODEOWNERS",
+  "human_gate_evidence": "approving_count=0, agent-gate required, no CODEOWNERS",
   "working_branch": "work/issue-12-foo",
   "issue": 12,
   "pr": "https://github.com/<o>/<r>/pull/34",
   "ci_commands": ["make ci"],
-  "review": {"tier": "codex", "blocking_findings": 0, "summary": "no issues"},
+  "review": {"tier": "codex", "blocking_findings": 0},
   "audit": "PASS",
-  "e2e_evidence": "attached",
-  "merge_commit": "abc123",
-  "notes": []
+  "merge_commit": "abc123"
 }
 ```
 
-`status`: `merged` (landed and verified), `awaiting_human` (human-gated; evidence posted), `blocked` (gate or evidence missing), `failed` (tooling error; branch left as-is).
-
-## When NOT to Invoke
-
-- Repos without the `.reconcile-gate.json` single-trunk marker: use the legacy `/reconcile` flow.
-- Experimental branches that should not land.
-- Work that has not passed review and audit.
+`status`: `merged`, `awaiting_human`, `blocked`, `failed`, `legacy_two_trunk`.

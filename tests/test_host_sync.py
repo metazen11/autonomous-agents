@@ -274,7 +274,7 @@ class HostSyncTest(unittest.TestCase):
         self.assertIn("gemini:", report)
 
     def test_primary_hosts_share_updated_global_protocols(self) -> None:
-        repo_root = Path("/Users/mz/_CODING/autonomous_agents_mds")
+        repo_root = Path(__file__).resolve().parents[1]
         for host in ("claude", "codex", "gemini", "anvil"):
             spec = HOST_SPECS[host]
             instructions = render_host_instructions(
@@ -303,12 +303,24 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("never creates `dev`", instructions)
             self.assertIn("The ORCHESTRATING agent", instructions)
             self.assertIn("permissions.admin == true", instructions)
+            rule = instructions[instructions.index("**Self-merge permission"):].split("\n")[0]
+            self.assertIn("agent-gate", rule)
+            self.assertIn("modify branch protection or rulesets", instructions)
+            self.assertIn("Operator approval is still required", instructions)
             self.assertNotIn("= fast-path", instructions)
             self.assertNotIn("reconciler MUST create `dev`", instructions)
             self.assertNotIn("Pre-live delivery mode", instructions)
             # Installed files live outside the repo; a relative docs/ pointer dangles there.
             self.assertNotIn("`docs/contract-reference.md`", instructions)
             self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)
+
+    def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for sub in ("agents", "pipeline", "docs"):
+            for f in (root / sub).rglob("*.md"):
+                if "superpowers" in f.parts:
+                    continue
+                self.assertNotIn("origin/dev", f.read_text(), str(f))
 
     def test_install_from_git_command_uses_repo_as_distribution_source(self) -> None:
         command = install_from_git_command(

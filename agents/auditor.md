@@ -144,7 +144,7 @@ Always emit structured JSON to stdout in addition to any narration:
   "issue_number": 123,
   "repo": "owner/name",
   "working_branch": "work/issue-123-foo",
-  "base_ref": "origin/dev",
+  "base_ref": "origin/<trunk>",
   "verdict": "fail",
   "criteria": [
     {

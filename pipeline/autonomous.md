@@ -46,7 +46,7 @@ If any precondition fails: write the failure to `plans/autonomous-precondition-f
 
 The branching contract in CLAUDE.md: repos with `.reconcile-gate.json` `{"model":"single-trunk"}` on `origin/main` use feature branch -> squash PR -> `main`, self-merged only when gates pass and branch protection positively reports 0 required approvals (else open the PR, post evidence, STOP; never approve, `--admin`, or push `main`). All other repos use the legacy two-trunk flow (`/reconcile` to `dev`/`develop`, human PR `dev -> main`). The `reconcile-gate` hook refuses non-conforming `gh pr create` calls.
 
-The wrapper's only path to landing is the reconciler (`/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
+The wrapper's only path to landing is the reconciler (single-trunk repos: the PR flow above; legacy two-trunk repos only: `/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
 
 ## Iron Rule: worktree isolation
 
