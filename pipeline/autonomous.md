@@ -36,7 +36,7 @@ Before any phase runs, verify ALL of these. A failure stops the wrapper with `ne
 2. **REPO_INDEX.json is fresh.** `make index --check` exit 0, OR regenerated within the last 10 commits. CLAUDE.md line 21.
 3. **Runaway-subagent detector is clean.** `scripts/detect_runaway_subagents.sh 5` exits 0. If non-zero, follow `docs/runbooks/runaway-subagent.md` BEFORE proceeding.
 4. **Reconcile lock available or owned by us.** `scripts/reconcile_lock.sh status` either reports `(no lock)` or a stale-PID entry the wrapper can clear via re-acquire.
-5. **Working branch is safe.** Not the production trunk, not the integration trunk; clean tree (no uncommitted changes); no in-progress rebase.
+5. **Working branch is safe.** Not the trunk (and not any `dev`/`develop` integration branch); clean tree (no uncommitted changes); no in-progress rebase.
 6. **`make start --check` exit 0.** Dependencies + env are sane. Doesn't change state.
 7. **`gh auth status` shows the expected account.** For `metazen11/psde-os` work, account must be `metazen11`, NOT `wfca-mz` (which lacks repo visibility — see memory `reference_gh_auth.md`).
 
@@ -44,9 +44,9 @@ If any precondition fails: write the failure to `plans/autonomous-precondition-f
 
 ## Iron Rule: branching contract
 
-This wrapper MUST NOT open PRs. The branching contract in CLAUDE.md says PRs are only for `integration-trunk → production-trunk` (`develop → main`), human-reviewed. The `reconcile-gate` hook will refuse non-conforming `gh pr create` calls.
+The branching contract in CLAUDE.md: repos with `.reconcile-gate.json` `{"model":"single-trunk"}` on `origin/main` use feature branch -> squash PR -> `main`, self-merged only when gates pass and branch protection positively reports 0 required approvals (else open the PR, post evidence, STOP; never approve, `--admin`, or push `main`). All other repos use the legacy two-trunk flow (`/reconcile` to `dev`/`develop`, human PR `dev -> main`). The `reconcile-gate` hook refuses non-conforming `gh pr create` calls.
 
-The wrapper's only path to integration is `/reconcile` (invoked inside `/autonomous-drain` Lane B per issue #721). Replace any "open a PR" language from prior versions of this skill with "run `/reconcile`."
+The wrapper's only path to landing is the reconciler (single-trunk repos: the PR flow above; legacy two-trunk repos only: `/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
 
 ## Iron Rule: worktree isolation
 
