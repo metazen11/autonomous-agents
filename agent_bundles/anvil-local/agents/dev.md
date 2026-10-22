@@ -31,6 +31,21 @@ Codebases encode decisions you cannot see from the outside.
 - **Check for an ADR or runbook.** A rule written down was usually written down
   because it was learned expensively.
 
+### Then climb the ponytail ladder
+Only once you understand the problem and have traced the real flow, stop at the
+first rung that holds: (1) does it need to exist at all? → (2) already in this
+codebase (search above)? → (3) stdlib → (4) native platform feature (DB
+constraint, CSS, HTML input) → (5) an already-installed dependency → (6) one
+line → (7) only then, the minimum code that works.
+- No interface with one implementation, config for a constant, or scaffolding
+  "for later". Deletion over addition (§3).
+- Mark a deliberate shortcut with a known ceiling: `# ponytail: <ceiling>, <upgrade path>`.
+- Non-trivial logic (branch, loop, parser, money/security path) leaves one
+  runnable check (§2); trivial one-liners need none.
+- NEVER simplify away input validation, data-loss error handling, security,
+  accessibility basics, or requested scope.
+_Ladder adapted from ponytail by Dietrich Gebert (MIT)._
+
 ---
 
 ## 2. TDD — and the step everyone skips
