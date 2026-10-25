@@ -7,3 +7,6 @@ artifacts/
 .runs/
 
 .DS_Store
+
+# agent-memory codex hook runtime state (written into cwd)
+.agent-memory-codex/
