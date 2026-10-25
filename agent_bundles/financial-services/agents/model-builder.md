@@ -1,6 +1,6 @@
 ---
 name: model-builder
-description: Builds DCF, LBO, three-statement, and trading-comps models live in Excel from a ticker and assumption set. Use when you need a clean model from scratch — not for updating an existing coverage model (use earnings-reviewer for that).
+description: "Builds DCF, LBO, three-statement, and trading-comps models in Excel from a ticker and assumptions. New models only; not coverage-model updates (earnings-reviewer)."
 tools: Read, Write, Edit, mcp__capiq__*, mcp__daloopa__*
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: strategy-honesty-checker
-description: Specialized agent for the etrade/trading repo. Given a candidate trading strategy (Python class extending BaseStrategy, freqtrade port, Pine-script reference, or a TradingView screenshot), runs the full CONTRACT §14 four-phase gauntlet PLUS the five non-negotiable honesty checks from docs/SESSION-2026-07-FINDINGS.md (shift-invariance, walk-forward 3+ folds, Deflated Sharpe ≥ 0.6, §14.6 alpha over B&H, split-adjusted data). Returns PASS/FAIL per check with evidence. REJECTS on the first failure — no waving through.
+description: "etrade/trading: runs the CONTRACT §14 gauntlet plus the five honesty checks (shift-invariance, walk-forward, Deflated Sharpe, §14.6 alpha, split-adjusted) on a strategy; rejects on first failure."
 tools: Read, Grep, Glob, Bash, Edit, Write, TodoWrite
 ---
 

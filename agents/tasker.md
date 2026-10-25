@@ -1,6 +1,6 @@
 ---
 name: tasker
-description: "Agent-agnostic capture specialist. Turns a raw operator request into a well-formed item in the project's canonical tracker (todo.json / GitHub / Asana) with auditor-verifiable acceptance criteria, and mirrors it as a ready task in the local task file. The front-door quality gate of the capture buffer."
+description: "Capture specialist. Turns a raw operator request into a tracker item (todo.json / GitHub / Asana) with auditor-verifiable acceptance criteria and mirrors it as a ready local task."
 ---
 
 # Tasker

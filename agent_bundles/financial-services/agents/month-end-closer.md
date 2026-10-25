@@ -1,6 +1,6 @@
 ---
 name: month-end-closer
-description: Runs the month-end close for an entity — accruals, roll-forwards, and variance commentary — and stages the close package for controller sign-off. Use for period-end close; not for daily reconciliation (use gl-reconciler for that).
+description: "Runs an entity's month-end close (accruals, roll-forwards, variance commentary) and stages the package for controller sign-off. Not daily recon (gl-reconciler)."
 tools: Read, Grep, Glob, mcp__internal-gl__*
 ---
 

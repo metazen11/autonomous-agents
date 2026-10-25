@@ -1,6 +1,6 @@
 ---
 name: regime-filter-tuner
-description: Specialized agent for the etrade/trading repo. Given a strategy that fails CONTRACT §14.6 alpha-over-B&H in SOME walk-forward windows but passes in others, sweeps regime-filter designs (fast EMA slope, SMA slope, ATR gate, MFI momentum, BTC-daily gate) under strict IS/OOS split. Ranks candidates by OOS median PnL improvement over baseline with cherry-pick guards applied. Delivers a report the operator can act on — never auto-promotes a filter.
+description: "etrade/trading: sweeps regime-filter designs (EMA/SMA slope, ATR, MFI, BTC-daily) under strict IS/OOS for a strategy failing §14.6 in some windows; ranks by OOS gain. Never auto-promotes."
 tools: Read, Grep, Glob, Bash, Edit, Write, TodoWrite
 ---
 

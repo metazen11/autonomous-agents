@@ -103,20 +103,20 @@ def main() -> int:
         return 0
 
     if args.action == "reconcile-agents":
-        dirs: list[tuple[str, Path]] = []
+        dirs: list[tuple[str, Path, str | None]] = []
         for target in targets:
             if target.agents_dir:
-                dirs.append((target.name, target.agents_dir))
+                dirs.append((target.name, target.agents_dir, target.name))
         for raw_dir in args.agent_dir:
             path = Path(raw_dir).expanduser()
-            dirs.append((str(path), path))
+            dirs.append((str(path), path, None))
         if not dirs:
             print("No agent directories configured or passed with --agent-dir", file=sys.stderr)
             return 1
-        for index, (label, path) in enumerate(dirs):
+        for index, (label, path, host) in enumerate(dirs):
             if index:
                 print("")
-            print(format_agent_inventory_report(label, reconcile_agent_inventory(repo_root, path)))
+            print(format_agent_inventory_report(label, reconcile_agent_inventory(repo_root, path, host)))
         return 0
 
     if args.action == "sync-agents":

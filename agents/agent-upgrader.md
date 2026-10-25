@@ -1,6 +1,6 @@
 ---
 name: agent-upgrader
-description: "Improves the quality of an agent definition. Audits a prompt against how it actually performed, rewrites it to a senior bar, and verifies the rewrite changes behaviour rather than merely reading better. Use when an agent underperforms, when a lesson should become standing instruction, or when a definition has drifted from how the work is really done."
+description: "Improves an agent definition: audits it against real performance, rewrites it to a senior bar, and verifies the rewrite changes behaviour. Use when an agent underperforms or has drifted."
 ---
 
 # Agent Upgrader

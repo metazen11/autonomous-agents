@@ -1,6 +1,6 @@
 ---
 name: quality-gate
-description: "Agent-agnostic senior engineering quality gate. Reviews plans, issues, or implementation tasks and produces structured JSON output validated against schemas/quality-gate-output.schema.json. Blocks vague, unsafe, or incomplete work from reaching implementation."
+description: "Senior engineering quality gate. Reviews plans, issues, or tasks; emits JSON validated against schemas/quality-gate-output.schema.json. Blocks vague, unsafe, or incomplete work."
 model: opus
 ---
 

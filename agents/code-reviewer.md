@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: "Agent-agnostic senior code reviewer. Evaluates changed files for correctness, maintainability, simplification opportunities, DRY violations, dependency impact, and documentation or commenting gaps before broader testing or merge."
+description: "Senior code reviewer. Reviews changed files for correctness, maintainability, simplification, DRY violations, dependency impact, and doc gaps before testing or merge."
 model: opus
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: gl-reconciler
-description: Reconciles general ledger to subledger across asset classes for a trade date — finds breaks, traces root cause, and routes the exception report for sign-off. Use for daily or month-end recon runs; not for journal-entry posting (use month-end-closer for that).
+description: "Reconciles GL to subledger for a trade date: finds breaks, traces root cause, routes the exception report for sign-off. Daily/month-end recon; not journal posting (month-end-closer)."
 tools: Read, Grep, Glob, mcp__internal-gl__*, mcp__subledger__*
 ---
 
