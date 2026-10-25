@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from autonomous_pipeline.host_sync import (
+    HOST_AGENTS_CONFIG,
+    HOST_NAMES,
     anacron_line,
     check_target,
     cron_line,
@@ -16,7 +19,9 @@ from autonomous_pipeline.host_sync import (
     launchd_plist,
     load_dotenv,
     format_agent_inventory_report,
+    host_bench_sources,
     reconcile_agent_inventory,
+    set_bench,
     sync_agents_dir,
     sync_target,
     update_checkout_from_git,
@@ -46,10 +51,13 @@ def build_parser() -> argparse.ArgumentParser:
             "update-and-sync",
             "reconcile-agents",
             "sync-agents",
+            "bench",
         ],
         nargs="?",
         default="check",
     )
+    parser.add_argument("bench_args", nargs="*", metavar="list | play NAME | sit NAME", help="bench action: play = make active, sit = bench")
+    parser.add_argument("--host", action="append", default=[], help="bench play/sit: host(s) to change (default: every host in host_agents.json)")
     parser.add_argument("--repo-root", default=".", help="Repository root")
     parser.add_argument("--env-file", default=".env", help="Path to .env file relative to repo root or absolute")
     parser.add_argument("--python-bin", default=None, help="Python executable to use in generated commands/hooks")
@@ -129,6 +137,9 @@ def main() -> int:
             print(f"synced agents: {path}")
         return 0
 
+    if args.action == "bench":
+        return run_bench(repo_root, args.bench_args, args.host, targets)
+
     if args.action == "print-cron":
         print(cron_line(repo_root, python_bin=python_bin))
         return 0
@@ -194,9 +205,12 @@ def main() -> int:
         skill_status = format_status(status.skill_in_sync)
         instructions_status = format_status(status.instructions_in_sync)
         config_status = format_status(status.config_snippet_in_sync)
+        bench_status = "n/a" if status.bench is None else (
+            f"{len(status.bench)} ok" if not status.bench_problems else ",".join(status.bench_problems)
+        )
         print(
             f"{target.name}: skill={skill_status} instructions={instructions_status} "
-            f"config={config_status} agents={agents_status} "
+            f"config={config_status} agents={agents_status} bench={bench_status} "
             f"schemas={schemas_status} scripts={scripts_status}"
         )
         if (
@@ -204,11 +218,40 @@ def main() -> int:
             or status.instructions_in_sync is False
             or status.config_snippet_in_sync is False
             or status.missing_agents
+            or status.bench_problems
             or status.missing_schemas
             or status.missing_scripts
         ):
             failed = True
     return 1 if failed else 0
+
+
+def run_bench(repo_root: Path, bench_args: list[str], hosts: list[str], targets) -> int:
+    if bench_args == ["list"]:
+        config = json.loads((repo_root / HOST_AGENTS_CONFIG).read_text()) if (repo_root / HOST_AGENTS_CONFIG).exists() else {}
+        for host in hosts or [key for key in config if key in HOST_NAMES]:
+            print(f"{host}: {', '.join(s.stem for s in host_bench_sources(repo_root, host)) or '(empty)'}")
+        return 0
+    if len(bench_args) != 2 or bench_args[0] not in ("play", "sit"):
+        print("usage: sync_prompt_pack.py bench list | play NAME | sit NAME [--host HOST]", file=sys.stderr)
+        return 2
+    verb, name = bench_args
+    try:
+        changed = set_bench(repo_root, name, benched=verb == "sit", hosts=hosts or None)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    if not changed:
+        print(f"{name} already {'benched' if verb == 'sit' else 'active'}; nothing changed")
+        return 0
+    print(f"{'sat' if verb == 'sit' else 'played'} {name}: {', '.join(changed)}")
+    for target in targets:
+        if target.name in changed and sync_target(repo_root, target):
+            print(f"synced {target.name}: {target.agents_dir}")
+    unsynced = sorted(set(changed) - {target.name for target in targets})
+    if unsynced:
+        print(f"not configured in .env, not synced: {', '.join(unsynced)}")
+    return 0
 
 
 def resolve_output_path(raw_output: str | None, default_path: Path) -> Path:

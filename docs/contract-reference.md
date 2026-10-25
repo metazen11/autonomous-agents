@@ -164,9 +164,15 @@ An injection over budget is a bug in the hook source, fixed there (never by edit
 ## Host agent selection (`host_agents.json`)
 
 `include` is `"all"` or a list of agent source stems; `exclude` is a list of stems. A host missing from the file
-gets every agent. Unknown stems fail the sync loudly. Finance agents (`agent_bundles/financial-services/`) may be
-excluded while the centralize.biz tenant is a data tenant (today only `kyc-screener`, operator 2026-10-25); re-enable for a finance tenant by deleting the stem's
-line from `exclude`. Source files are never deleted.
+gets every agent. Unknown stems fail the sync loudly. Source files are never deleted.
+
+The `exclude` list is the host's **bench**: benched agents sync to `<host agent dir parent>/agents-bench/`, which no
+host loads. `scripts/sync_prompt_pack.py bench list | play <stem> | sit <stem> [--host H]` moves one agent between
+the bench and the active set by editing this file, then re-syncs only the hosts it changed. `check` fails when a benched
+agent is also in the active dir. Benched on Claude and Codex (operator 2026-10-25): the finance bundle while the
+centralize.biz tenant = data, `anvil-qa`/`anvil-qa-ui` (Anvil console only), `regime-filter-tuner`/`strategy-honesty-checker`
+(etrade/trading repo only; `bench play` them or install them project-level there). Only files with `name:` and
+`description:` frontmatter are agents; others (e.g. `secret_rotator.SPEC.md`) are never rendered.
 
 ## Code review invocations
 
