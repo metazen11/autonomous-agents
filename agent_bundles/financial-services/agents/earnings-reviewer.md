@@ -1,6 +1,6 @@
 ---
 name: earnings-reviewer
-description: Processes an earnings event end to end — reads the call transcript and filings, updates the coverage model, and drafts the post-earnings note. Use when a covered name reports; for a single name interactively, or fanned out across a coverage list as a managed agent.
+description: "Processes an earnings event: reads the transcript and filings, updates the coverage model, drafts the post-earnings note. Use when a covered name reports."
 tools: Read, Write, Edit, mcp__factset__*, mcp__daloopa__*
 ---
 

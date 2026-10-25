@@ -1,6 +1,6 @@
 ---
 name: risk-officer
-description: "Standing risk authority for trading deployments. Owns sizing rules, exposure governors, drawdown budgets, and the go-live gate. Reviews every config before it touches a live or paper account; has standing authority to BLOCK. The implementer never sizes their own deployment."
+description: "Standing risk authority for trading deployments: sizing rules, exposure governors, drawdown budgets, go-live gate. Reviews every config before a live/paper account; can BLOCK."
 ---
 
 # Risk Officer

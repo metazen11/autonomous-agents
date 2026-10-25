@@ -1,6 +1,6 @@
 ---
 name: reconciler
-description: "Agent-agnostic landing specialist. In single-trunk repos (`.reconcile-gate.json` marker): syncs the trunk into the branch, runs the CI gate, opens/updates the PR, verifies evidence, squash-merges only when the contract permits, and verifies the merge landed. Otherwise STOPs (legacy two-trunk repos use `/reconcile`)."
+description: "Landing specialist. Single-trunk repos (`.reconcile-gate.json`): syncs trunk, runs CI, opens the PR, verifies evidence, squash-merges only when permitted. Otherwise STOPs (use `/reconcile`)."
 ---
 
 # Reconciler

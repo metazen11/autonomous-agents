@@ -1,0 +1,15 @@
+{
+  "_doc": "Per-host agent selection for scripts/sync_prompt_pack.py. include: \"all\" or a list of agent source stems; exclude: stems, one per line. A host not listed gets every agent. Finance agents are excluded while the centralize.biz tenant = data; re-enable for a finance tenant by deleting the stem's line. Never delete agent sources. See docs/contract-reference.md (Host agent selection).",
+  "claude": {
+    "include": "all",
+    "exclude": [
+      "kyc-screener"
+    ]
+  },
+  "codex": {
+    "include": "all",
+    "exclude": [
+      "kyc-screener"
+    ]
+  }
+}

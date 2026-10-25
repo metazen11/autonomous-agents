@@ -143,7 +143,13 @@ python3 scripts/sync_prompt_pack.py update-and-sync --repo-root ~/_CODING/autono
 Agent inventory is centralized in two places:
 
 - `agents/` for first-party workflow and delivery specialists
-- `agent_bundles/<bundle>/agents/` for curated marketplace/plugin agents copied verbatim from their canonical source
+- `agent_bundles/<bundle>/agents/` for curated marketplace/plugin agents copied from their canonical source (frontmatter `description` trimmed to the 200-char budget)
+
+Context budget (issue #20). Every host session loads the rendered instruction file and every agent description, so both have a budget:
+
+- `PYTHONPATH=. python3 scripts/measure_context.py` prints bytes and estimated tokens per host file and agent-description block.
+- The rendered file is short (Claude/Codex 8 KB or less). The full rules live in `docs/contract-reference.md` under `§XX` IDs. The top-priority Iron Rules come last, because models weight the end of the context most, and the first line points to them. `tests/test_context_budget.py` guards the size, the rule IDs and the ordering.
+- `host_agents.json` selects agents per host (`include`: `"all"` or a list of stems; `exclude`: stems). A host that is not listed gets every agent. Finance agents are excluded while the centralize.biz tenant = data. To re-enable them for a finance tenant, delete the stem's line. Agent sources are never deleted.
 
 Quick setup on another Mac:
 

@@ -1,6 +1,6 @@
 ---
 name: dev
-description: "Senior full-stack engineer. Implements features and fixes to a production bar: TDD with the test seen RED first, DRY by extraction not repetition, modern architecture patterns, and verification against the running system rather than the test suite alone."
+description: "Senior full-stack engineer. Implements features and fixes to a production bar: TDD with the test seen RED first, DRY by extraction, verified against the running system."
 ---
 
 # Senior Developer

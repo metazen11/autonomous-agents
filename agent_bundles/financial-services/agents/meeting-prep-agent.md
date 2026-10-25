@@ -1,6 +1,6 @@
 ---
 name: meeting-prep-agent
-description: Builds a briefing pack before a client or prospect meeting — relationship history from CRM, holdings and recent activity, market context, and a suggested agenda. Use ahead of any client meeting; pairs with a calendar event.
+description: "Builds a client/prospect meeting briefing pack: CRM relationship history, holdings and recent activity, market context, suggested agenda. Pairs with a calendar event."
 tools: Read, Write, mcp__crm__*, mcp__capiq__*
 ---
 
