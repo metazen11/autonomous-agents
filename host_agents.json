@@ -1,15 +1,41 @@
 {
-  "_doc": "Per-host agent selection for scripts/sync_prompt_pack.py. include: \"all\" or a list of agent source stems; exclude: stems, one per line. A host not listed gets every agent. Finance agents may be excluded while the centralize.biz tenant = data (today only kyc-screener, operator 2026-10-25); re-enable for a finance tenant by deleting the stem's line. Never delete agent sources. See docs/contract-reference.md (Host agent selection).",
+  "_doc": "Per-host agent selection for scripts/sync_prompt_pack.py. include: \"all\" or a list of agent source stems; exclude: stems, one per line. Excluded agents are the BENCH: synced to <host>/agents-bench/, which no host loads. `sync_prompt_pack.py bench play <stem>` makes one active, `bench sit <stem>` benches it (edits this file, re-syncs that host). A host not listed gets every agent. Bench today (operator 2026-10-25): finance agents while the centralize.biz tenant = data; anvil-qa, anvil-qa-ui (Anvil console only); regime-filter-tuner, strategy-honesty-checker (etrade/trading repo only). Never delete agent sources. See docs/contract-reference.md (Host agent selection).",
   "claude": {
     "include": "all",
     "exclude": [
-      "kyc-screener"
+      "anvil-qa",
+      "anvil-qa-ui",
+      "earnings-reviewer",
+      "gl-reconciler",
+      "kyc-screener",
+      "market-researcher",
+      "meeting-prep-agent",
+      "model-builder",
+      "month-end-closer",
+      "pitch-agent",
+      "regime-filter-tuner",
+      "statement-auditor",
+      "strategy-honesty-checker",
+      "valuation-reviewer"
     ]
   },
   "codex": {
     "include": "all",
     "exclude": [
-      "kyc-screener"
+      "anvil-qa",
+      "anvil-qa-ui",
+      "earnings-reviewer",
+      "gl-reconciler",
+      "kyc-screener",
+      "market-researcher",
+      "meeting-prep-agent",
+      "model-builder",
+      "month-end-closer",
+      "pitch-agent",
+      "regime-filter-tuner",
+      "statement-auditor",
+      "strategy-honesty-checker",
+      "valuation-reviewer"
     ]
   }
 }

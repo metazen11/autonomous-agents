@@ -92,6 +92,8 @@ class SyncStatus:
     missing_agents: list[str] | None = None
     missing_schemas: list[str] | None = None
     missing_scripts: list[str] | None = None
+    bench: list[str] | None = None
+    bench_problems: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,11 +119,25 @@ def repo_skill_source(repo_root: Path) -> Path:
     return repo_root / "pipeline" / "autonomous.md"
 
 
+def is_agent_source(path: Path) -> bool:
+    """True for the shared guide, or a file whose `---` frontmatter has `name:` and `description:`.
+
+    Anything else (specs, notes) in an agents dir is not an agent and is never rendered to a host.
+    """
+    if path.name == "AGENT_AGNOSTIC_GUIDE.md":
+        return True
+    parts = path.read_text().split("\n---\n", 1)
+    if not parts[0].startswith("---\n") or len(parts) < 2:
+        return False
+    return all(re.search(rf"(?m)^{key}:[ \t]*\S", parts[0]) for key in ("name", "description"))
+
+
 def repo_agent_sources(repo_root: Path) -> list[Path]:
     sources = sorted((repo_root / "agents").glob("*.md"))
     bundles_dir = repo_root / "agent_bundles"
     if bundles_dir.is_dir():
         sources.extend(sorted(bundles_dir.glob("*/agents/*.md")))
+    sources = [source for source in sources if is_agent_source(source)]
 
     seen: dict[str, Path] = {}
     for source in sources:
@@ -135,12 +151,12 @@ def repo_agent_sources(repo_root: Path) -> list[Path]:
 HOST_AGENTS_CONFIG = "host_agents.json"
 
 
-def host_agent_sources(repo_root: Path, host: str | None) -> list[Path]:
-    """Agent sources synced to *host*, per `host_agents.json` (missing host or file => all)."""
+def _split_host_agents(repo_root: Path, host: str | None) -> tuple[list[Path], list[Path]]:
+    """(active, bench) agent sources for *host*, per `host_agents.json` (missing host or file => all active)."""
     sources = repo_agent_sources(repo_root)
     config_path = repo_root / HOST_AGENTS_CONFIG
     if host is None or not config_path.exists():
-        return sources
+        return sources, []
     config = json.loads(config_path.read_text()).get(host, {})
     include = config.get("include", "all")
     exclude = set(config.get("exclude", []))
@@ -148,7 +164,46 @@ def host_agent_sources(repo_root: Path, host: str | None) -> list[Path]:
     unknown = named - {source.stem for source in sources}
     if unknown:
         raise ValueError(f"{HOST_AGENTS_CONFIG}[{host}] names unknown agents {sorted(unknown)}; use source file stems")
-    return [s for s in sources if (include == "all" or s.stem in include) and s.stem not in exclude]
+    active = [s for s in sources if (include == "all" or s.stem in include) and s.stem not in exclude]
+    return active, [s for s in sources if s not in active]
+
+
+def host_agent_sources(repo_root: Path, host: str | None) -> list[Path]:
+    """Agent sources synced to *host*'s active agent dir."""
+    return _split_host_agents(repo_root, host)[0]
+
+
+def host_bench_sources(repo_root: Path, host: str | None) -> list[Path]:
+    """Agent sources kept on *host*'s bench: synced to `agents-bench/`, which no host loads."""
+    return _split_host_agents(repo_root, host)[1]
+
+
+def bench_dir(agents_dir: Path) -> Path:
+    return agents_dir.parent / "agents-bench"
+
+
+def set_bench(repo_root: Path, stem: str, benched: bool, hosts: Sequence[str] | None = None) -> list[str]:
+    """Bench (or play) *stem* for *hosts* (default: every host in `host_agents.json`); returns the hosts changed."""
+    if stem not in {source.stem for source in repo_agent_sources(repo_root)}:
+        raise ValueError(f"unknown agent {stem!r}; use a source file stem, e.g. pitch-agent")
+    config_path = repo_root / HOST_AGENTS_CONFIG
+    config = json.loads(config_path.read_text()) if config_path.exists() else {}
+    changed = []
+    for host in hosts or [key for key in config if key in HOST_NAMES]:
+        entry = config.setdefault(host, {"include": "all", "exclude": []})
+        exclude, include = entry.setdefault("exclude", []), entry.get("include", "all")
+        if benched and stem not in exclude:
+            entry["exclude"] = sorted(exclude + [stem])
+        elif not benched and (stem in exclude or (include != "all" and stem not in include)):
+            entry["exclude"] = [name for name in exclude if name != stem]
+            if include != "all" and stem not in include:
+                include.append(stem)
+        else:
+            continue
+        changed.append(host)
+    if changed:
+        config_path.write_text(json.dumps(config, indent=2) + "\n")
+    return changed
 
 
 def rendered_agent_filename(source: Path) -> str:
@@ -379,8 +434,14 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
 
 
 def sync_agents_dir(repo_root: Path, agents_dir: Path, host: str | None = None) -> None:
+    active, bench = _split_host_agents(repo_root, host)
+    _write_agents(agents_dir, active)
+    if bench or bench_dir(agents_dir).is_dir():
+        _write_agents(bench_dir(agents_dir), bench)
+
+
+def _write_agents(agents_dir: Path, sources: list[Path]) -> None:
     agents_dir.mkdir(parents=True, exist_ok=True)
-    sources = host_agent_sources(repo_root, host)
     rendered_names = {rendered_agent_filename(source) for source in sources}
     for target_file in agents_dir.glob("*.md"):
         if target_file.name not in rendered_names:
@@ -394,6 +455,18 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
     agent_sources = host_agent_sources(repo_root, target.name)
     skill_in_sync: bool | None = None
     missing_agents: list[str] | None = None
+    bench: list[str] | None = None
+    bench_problems: list[str] | None = None
+    if target.agents_dir:
+        bench, bench_problems = [], []
+        for source in host_bench_sources(repo_root, target.name):
+            name = rendered_agent_filename(source)
+            bench.append(name)
+            if (target.agents_dir / name).exists():
+                bench_problems.append(f"{name}(active)")
+            benched_file = bench_dir(target.agents_dir) / name
+            if not benched_file.exists() or benched_file.read_text() != render_agent_prompt(source):
+                bench_problems.append(f"{name}(missing)")
     if target.skill_path or target.agents_dir:
         if not target.skill_path or not target.agents_dir or not target.skill_path.exists() or not target.agents_dir.exists():
             skill_in_sync = False
@@ -443,6 +516,8 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
         missing_agents=missing_agents,
         missing_schemas=missing_schemas,
         missing_scripts=missing_scripts,
+        bench=bench,
+        bench_problems=bench_problems,
     )
 
 

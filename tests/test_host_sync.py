@@ -54,8 +54,8 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
-            (repo_root / "agents" / "two.md").write_text("agent two\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
+            (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
             target_root = Path(tmpdir) / "target"
             target = discover_targets(
@@ -87,7 +87,7 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
 
             # Mirror the real /opt/anvil case: the git target already has
             # committed copies of the sync-destination files (CLAUDE.md,
@@ -174,7 +174,7 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
 
             target_root = Path(tmpdir) / "target"
             target = discover_targets(
@@ -195,7 +195,7 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             target_dir = Path(tmpdir) / "target"
             (repo_root / "agents").mkdir(parents=True)
-            (repo_root / "agents" / "core-agent.md").write_text("---\nname: core-agent\n---\n\nBody\n")
+            (repo_root / "agents" / "core-agent.md").write_text("---\nname: core-agent\ndescription: demo\n---\n\nBody\n")
             target_dir.mkdir()
             (target_dir / "core-agent.md").write_text("legacy\n")
 
@@ -211,9 +211,9 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "agent_bundles" / "financial-services" / "agents").mkdir(parents=True)
-            (repo_root / "agents" / "core.md").write_text("core\n")
+            (repo_root / "agents" / "core.md").write_text("---\nname: core\ndescription: demo\n---\ncore\n")
             bundle_agent = repo_root / "agent_bundles" / "financial-services" / "agents" / "earnings-reviewer.md"
-            bundle_agent.write_text("financial\n")
+            bundle_agent.write_text("---\nname: earnings-reviewer\ndescription: demo\n---\nfinancial\n")
 
             sources = repo_agent_sources(repo_root)
 
@@ -234,8 +234,8 @@ class HostSyncTest(unittest.TestCase):
             target_dir = Path(tmpdir) / "target"
             (repo_root / "agents").mkdir(parents=True)
             target_dir.mkdir()
-            (repo_root / "agents" / "core.md").write_text("---\nname: core\n---\n\nrepo\n")
-            (target_dir / "aa_core.md").write_text("---\nname: aa_core\n---\n\ntarget\n")
+            (repo_root / "agents" / "core.md").write_text("---\nname: core\ndescription: demo\n---\n\nrepo\n")
+            (target_dir / "aa_core.md").write_text("---\nname: aa_core\ndescription: demo\n---\n\ntarget\n")
             (target_dir / "host-only.md").write_text("host\n")
 
             report = reconcile_agent_inventory(repo_root, target_dir)
