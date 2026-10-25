@@ -1,4 +1,8 @@
-"""Issue #20: always-loaded instruction budget, rule drift, recency ordering, per-host agent selection."""
+"""Issue #20: always-loaded instruction budget, rule drift, recency ordering, per-host agent selection.
+
+The render-or-link check is per section (one §XX link covers every rule with that prefix); the frozen
+per-prefix count in EXPECTED_RULE_COUNTS is the real guard against a dropped rule.
+"""
 from __future__ import annotations
 
 import json
