@@ -149,7 +149,7 @@ Context budget (issue #20). Every host session loads the rendered instruction fi
 
 - `PYTHONPATH=. python3 scripts/measure_context.py` prints bytes and estimated tokens per host file and agent-description block.
 - The rendered file is short (Claude/Codex 8 KB or less). The full rules live in `docs/contract-reference.md` under `§XX` IDs. The top-priority Iron Rules come last, because models weight the end of the context most, and the first line points to them. `tests/test_context_budget.py` guards the size, the rule IDs and the ordering.
-- `host_agents.json` selects agents per host (`include`: `"all"` or a list of stems; `exclude`: stems). A host that is not listed gets every agent. Finance agents are excluded while the centralize.biz tenant = data. To re-enable them for a finance tenant, delete the stem's line. Agent sources are never deleted.
+- `host_agents.json` selects agents per host (`include`: `"all"` or a list of stems; `exclude`: stems). A host that is not listed gets every agent. Finance agents may be excluded while the centralize.biz tenant = data (today only `kyc-screener`). To re-enable them for a finance tenant, delete the stem's line. Agent sources are never deleted.
 
 Quick setup on another Mac:
 

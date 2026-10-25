@@ -164,8 +164,8 @@ An injection over budget is a bug in the hook source, fixed there (never by edit
 ## Host agent selection (`host_agents.json`)
 
 `include` is `"all"` or a list of agent source stems; `exclude` is a list of stems. A host missing from the file
-gets every agent. Unknown stems fail the sync loudly. Finance agents (`agent_bundles/financial-services/`) are
-excluded while the centralize.biz tenant is a data tenant; re-enable for a finance tenant by deleting the stem's
+gets every agent. Unknown stems fail the sync loudly. Finance agents (`agent_bundles/financial-services/`) may be
+excluded while the centralize.biz tenant is a data tenant (today only `kyc-screener`, operator 2026-10-25); re-enable for a finance tenant by deleting the stem's
 line from `exclude`. Source files are never deleted.
 
 ## Code review invocations
