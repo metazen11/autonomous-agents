@@ -54,6 +54,8 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
+            (repo_root / "skills" / "extra").mkdir(parents=True)
+            (repo_root / "skills" / "extra" / "skill.md").write_text("extra skill\n")
             (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
             (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
@@ -70,6 +72,7 @@ class HostSyncTest(unittest.TestCase):
 
             result = sync_target(repo_root, target)
             self.assertTrue(result, "sync_target should return True for a plain target")
+            self.assertEqual((target.skill_path.parent.parent / "extra" / "skill.md").read_text(), "extra skill\n")
             status = check_target(repo_root, target)
         self.assertTrue(status.skill_in_sync)
         self.assertEqual(status.missing_agents, [])
