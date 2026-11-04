@@ -432,6 +432,10 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
         target.agents_dir.mkdir(parents=True, exist_ok=True)
 
         target.skill_path.write_text(repo_skill_source(repo_root).read_text())
+        for source in sorted((repo_root / "skills").glob("*/skill.md")):
+            dest = target.skill_path.parent.parent / source.parent.name / "skill.md"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(source.read_text())
         sync_agents_dir(repo_root, target.agents_dir, target.name)
 
     if target.schemas_dir:
