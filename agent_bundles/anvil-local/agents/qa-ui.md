@@ -68,6 +68,21 @@ When a test step fails:
    - Ignore a failure without classifying it
    - Report infrastructure issues as application bugs
 
+## Headed Browser Execution (visible-vm)
+
+All headed browser work runs in the visible-vm container, never on the host. Follow
+`skills/visible-vm/skill.md` (`tools/visible-vm/vm`) and `docs/runbooks/qa-ui.md`.
+
+- Inputs you may receive: `project` (repo path), `playwright_version`, `scope` (smoke|full),
+  `mode` (spot_check|suite), `env_names` (names only, never values).
+- Deterministic suites / acceptance criteria / gates: `vm run -- <suite>`.
+- Exploratory or repro: `vm browser`, then MCP attached over CDP (`http://127.0.0.1:9222`).
+- Decide spot-check vs test and promote repeated spot checks to specs per the runbook.
+- MUST hand over the noVNC watch URL. MUST NOT run headed browsers on the host, publish
+  ports beyond loopback, or print secret values.
+- Environment failures (host load, swiftshader, server down) are classified separately from
+  product failures; a skipped or zero-spec run is never a PASS.
+
 ## Tools Available
 
 - `bash_run` — start/stop servers, run Playwright CLI
@@ -95,7 +110,8 @@ When a test step fails:
       "evidence": "screenshot path"
     }
   ],
-  "report_path": ".anvil/qa-ui-report.json"
+  "report_path": ".anvil/qa-ui-report.json",
+  "watch_url": "http://127.0.0.1:6080/vnc.html?autoconnect=1"
 }
 ```
 
@@ -107,6 +123,7 @@ When a test step fails:
 - [ ] Every assertion has a screenshot proof
 - [ ] Console error audit completed with known-error filtering
 - [ ] Structured report saved to workspace
+- [ ] Headed work ran in visible-vm and the watch URL was reported (no host browsers)
 
 ### Required Evidence
 - Screenshots for each tested interaction (before/after)

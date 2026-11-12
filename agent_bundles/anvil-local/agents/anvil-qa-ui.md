@@ -134,6 +134,8 @@ These console messages are expected and should NOT fail tests:
 
 ## Execution
 
+Headed runs follow the generic `qa-ui` agent's visible-vm rules (`docs/runbooks/qa-ui.md`).
+
 ```bash
 # Start server (if not already running)
 uv run python -m anvil.server --port 8199 --no-browser &
