@@ -72,7 +72,7 @@ noVNC display.
 - **node_modules** are Linux binaries in the volume; do not expect host installs to work in
   the container or vice versa. Reset: `docker volume rm visible-vm-nm-<hash>` (hash is in `vm status`).
 - **Never bind beyond loopback.** `vm` publishes only on loopback; do not edit it to widen.
-  VNC has no password (`-nopw`), safe only because of that.
+  VNC has no password (`-nopw`); loopback alone is not enough (a web page in your host browser can open ws://127.0.0.1), so websockify enforces an Origin allow-list (`VM_ALLOWED_ORIGINS`, set by `vm up`). Do not remove it.
 - **Worktrees.** A git worktree's `.git` file points at a host path that does not exist in
   the container, so git commands inside may fail. Pass SHAs/branch names via env instead.
 - **Chromium CDP** binds container-loopback only; `vm browser` uses a socat relay

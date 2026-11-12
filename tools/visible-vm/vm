@@ -39,7 +39,8 @@ PROJECT="$(cd "$PROJECT" && pwd -P)"
 ID="$(printf '%s' "$PROJECT" | shasum | cut -c1-8)"
 NAME="visible-vm-$ID"
 VOL="visible-vm-nm-$ID"
-IMAGE="visible-vm:$PW_VERSION"
+# Tag includes a content hash so Dockerfile/entrypoint edits trigger a rebuild.
+IMAGE="visible-vm:$PW_VERSION-$(cat "$HERE/Dockerfile" "$HERE/entrypoint.sh" | shasum | cut -c1-8)"
 
 running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || true)" = "true" ]; }
 need_running() { running || die "container $NAME not running; run: vm up --project $PROJECT"; }
@@ -54,21 +55,27 @@ case "$cmd" in
     docker run -d --name "$NAME" --init --shm-size=1g \
       --add-host host.docker.internal:host-gateway \
       -p "${LOOPBACK}:${NOVNC_PORT}:6080" -p "${LOOPBACK}:${CDP_PORT}:9223" \
+      -e "VM_ALLOWED_ORIGINS=http://${LOOPBACK}:${NOVNC_PORT} http://localhost:${NOVNC_PORT}" \
       -v "$PROJECT:$PROJECT" -v "$VOL:$PROJECT/node_modules" \
       "$IMAGE" >/dev/null
     for _ in $(seq 1 50); do
       [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${LOOPBACK}:${NOVNC_PORT}/vnc.html" || true)" = "200" ] && break
       sleep 0.3
     done
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${LOOPBACK}:${NOVNC_PORT}/vnc.html" || true)" = "200" ] || \
+      { docker logs --tail 20 "$NAME" >&2; die "noVNC not reachable on :${NOVNC_PORT}"; }
     echo "up: $NAME (project $PROJECT)"; echo "watch: $(watch_url)" ;;
   run)
     need_running
     [ $# -gt 0 ] || die "usage: vm run [--env NAME ...] -- CMD..."
     EARGS=""
+    set -f   # no glob expansion of --env names
     for n in $ENVS; do
       case "$n" in *[!A-Za-z0-9_]*) die "bad env name: $n" ;; esac
+      eval "[ -n \"\${$n+x}\" ]" || die "env $n is not set on the host"
       EARGS="$EARGS -e $n"   # name only: docker takes the value from our environment
     done
+    set +f
     if [ -f "$PROJECT/package-lock.json" ]; then
       SUM="$(shasum "$PROJECT/package-lock.json" | cut -c1-40)"
       HAVE="$(docker exec "$NAME" cat "$PROJECT/node_modules/.vm-lock-sum" 2>/dev/null || true)"
