@@ -1,0 +1,107 @@
+#!/bin/bash
+# vm - headed browser/UI work in a container on a virtual display you watch via noVNC.
+#   vm up [--project DIR] [--pw-version V]
+#   vm run [--project DIR] [--env NAME ...] -- CMD...
+#   vm browser | watch | status | down   (all accept --project DIR; default $PWD)
+# Env: VM_NOVNC_PORT (6080), VM_CDP_PORT (9222), VM_PW_VERSION (1.58.2).
+# Published ports are bound to loopback only (LOOPBACK below) - never widen it.
+# bash 3.2 compatible (stock macOS).
+set -eu
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+LOOPBACK=127.0.0.1
+NOVNC_PORT="${VM_NOVNC_PORT:-6080}"
+CDP_PORT="${VM_CDP_PORT:-9222}"
+PW_VERSION="${VM_PW_VERSION:-1.58.2}"
+PROJECT="$PWD"
+
+die() { echo "vm: $*" >&2; exit 1; }
+watch_url() { echo "http://${LOOPBACK}:${NOVNC_PORT}/vnc.html?autoconnect=1"; }
+cdp_url() { echo "http://${LOOPBACK}:${CDP_PORT}"; }
+cdp_up() { curl -s "$(cdp_url)/json/version" 2>/dev/null | grep -q Browser; }
+
+cmd="${1:-}"; [ -n "$cmd" ] || die "usage: vm up|run|browser|watch|status|down"
+shift
+
+ENVS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project) [ $# -ge 2 ] || die "--project needs DIR"; PROJECT="$2"; shift 2 ;;
+    --pw-version) [ $# -ge 2 ] || die "--pw-version needs V"; PW_VERSION="$2"; shift 2 ;;
+    --env) [ $# -ge 2 ] || die "--env needs NAME"; ENVS="$ENVS $2"; shift 2 ;;
+    --) shift; break ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+[ -d "$PROJECT" ] || die "project dir not found: $PROJECT"
+PROJECT="$(cd "$PROJECT" && pwd -P)"
+ID="$(printf '%s' "$PROJECT" | shasum | cut -c1-8)"
+NAME="visible-vm-$ID"
+VOL="visible-vm-nm-$ID"
+IMAGE="visible-vm:$PW_VERSION"
+
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || true)" = "true" ]; }
+need_running() { running || die "container $NAME not running; run: vm up --project $PROJECT"; }
+
+case "$cmd" in
+  up)
+    if running; then echo "already running: $NAME"; echo "watch: $(watch_url)"; exit 0; fi
+    docker image inspect "$IMAGE" >/dev/null 2>&1 || \
+      docker build --build-arg "PW_VERSION=$PW_VERSION" -t "$IMAGE" "$HERE"
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    # CDP maps to the socat relay (9223) that `vm browser` starts inside the container
+    docker run -d --name "$NAME" --init --shm-size=1g \
+      --add-host host.docker.internal:host-gateway \
+      -p "${LOOPBACK}:${NOVNC_PORT}:6080" -p "${LOOPBACK}:${CDP_PORT}:9223" \
+      -v "$PROJECT:$PROJECT" -v "$VOL:$PROJECT/node_modules" \
+      "$IMAGE" >/dev/null
+    for _ in $(seq 1 50); do
+      [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${LOOPBACK}:${NOVNC_PORT}/vnc.html" || true)" = "200" ] && break
+      sleep 0.3
+    done
+    echo "up: $NAME (project $PROJECT)"; echo "watch: $(watch_url)" ;;
+  run)
+    need_running
+    [ $# -gt 0 ] || die "usage: vm run [--env NAME ...] -- CMD..."
+    EARGS=""
+    for n in $ENVS; do
+      case "$n" in *[!A-Za-z0-9_]*) die "bad env name: $n" ;; esac
+      EARGS="$EARGS -e $n"   # name only: docker takes the value from our environment
+    done
+    if [ -f "$PROJECT/package-lock.json" ]; then
+      SUM="$(shasum "$PROJECT/package-lock.json" | cut -c1-40)"
+      HAVE="$(docker exec "$NAME" cat "$PROJECT/node_modules/.vm-lock-sum" 2>/dev/null || true)"
+      if [ "$SUM" != "$HAVE" ]; then
+        echo "vm: npm ci (lockfile changed)" >&2
+        docker exec -w "$PROJECT" "$NAME" sh -c "npm ci && echo $SUM > node_modules/.vm-lock-sum"
+      fi
+    fi
+    # shellcheck disable=SC2086
+    exec docker exec -w "$PROJECT" -e DISPLAY=:99 -e PLAYWRIGHT_HEADED=1 $EARGS "$NAME" "$@" ;;
+  browser)
+    need_running
+    if cdp_up; then echo "CDP endpoint: $(cdp_url) (already running)"; exit 0; fi
+    # Chromium binds CDP to loopback inside the container and ignores
+    # --remote-debugging-address, so socat relays 0.0.0.0:9223 -> :9222 for the port map.
+    docker exec -d -e DISPLAY=:99 "$NAME" sh -c '
+      socat TCP-LISTEN:9223,fork,reuseaddr TCP:localhost:9222 &
+      CH=$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -1)
+      exec "$CH" --remote-debugging-port=9222 --no-sandbox --user-data-dir=/tmp/vm-chrome \
+        --window-size=1920,1080 --no-first-run about:blank'
+    for _ in $(seq 1 60); do cdp_up && break; sleep 0.5; done
+    cdp_up || die "CDP did not come up on :${CDP_PORT}"
+    echo "CDP endpoint: $(cdp_url)"; echo "watch: $(watch_url)" ;;
+  watch)
+    need_running; u="$(watch_url)"; echo "$u"
+    if [ "$(uname)" = "Darwin" ]; then open "$u"; fi ;;
+  status)
+    if running; then
+      echo "running: $NAME (project $PROJECT)"; echo "watch: $(watch_url)"
+      docker port "$NAME"
+    else echo "not running: $NAME"; exit 1; fi ;;
+  down)
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    echo "down: $NAME (node_modules volume $VOL kept; docker volume rm $VOL to drop)" ;;
+  *) die "unknown subcommand: $cmd" ;;
+esac
