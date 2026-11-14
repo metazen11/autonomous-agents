@@ -18,6 +18,7 @@ This repository is not yet a fully self-driving production orchestrator. The ver
 - [docs/system-overview.md](docs/system-overview.md)
 - [docs/architectural-overview.md](docs/architectural-overview.md)
 - [docs/host-integration.md](docs/host-integration.md)
+- [docs/agent-capabilities.md](docs/agent-capabilities.md) — role capabilities, self-contained generated agents, skill audit and activation limits
 - [examples/README.md](examples/README.md)
 
 ## Current Architecture

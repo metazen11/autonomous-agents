@@ -209,15 +209,46 @@ def set_bench(repo_root: Path, stem: str, benched: bool, hosts: Sequence[str] | 
 def rendered_agent_filename(source: Path) -> str:
     if source.name == "AGENT_AGNOSTIC_GUIDE.md":
         return source.name
-    return f"aa_{source.stem.replace('-', '_')}.md"
+    stem = source.stem.replace("-", "_")
+    return f"{stem if stem.startswith('aa_') else 'aa_' + stem}.md"
 
 
-def render_agent_prompt(source: Path) -> str:
+_CONTRACT_BEGIN = "<!-- BEGIN GENERATED AGENT CONTRACT -->"
+_CONTRACT_END = "<!-- END GENERATED AGENT CONTRACT -->"
+
+
+def render_agent_prompt(source: Path, *, repo_root: Path) -> str:
+    """Render a self-contained specialist using only this repository's guide.
+
+    Explicit repo_root prevents a bundle-local or installed guide from silently
+    replacing the canonical contract. Previously generated blocks are replaced,
+    not recursively embedded. Malformed reserved markers fail closed.
+    """
+    root = repo_root.resolve()
+    source.resolve().relative_to(root)
+    guide = root / "agents" / "AGENT_AGNOSTIC_GUIDE.md"
+    guide.resolve().relative_to(root)
+    if not guide.is_file():
+        raise ValueError(f"missing canonical agent contract: {guide}")
+    contract = guide.read_text()
+    if not contract.strip() or _CONTRACT_BEGIN in contract or _CONTRACT_END in contract:
+        raise ValueError("canonical agent contract is empty or contains generated markers")
+    if source.resolve() == guide.resolve():
+        return contract
+    if source.name == guide.name:
+        raise ValueError("only the canonical agent contract may use the guide filename")
     text = source.read_text()
-    if source.name == "AGENT_AGNOSTIC_GUIDE.md":
-        return text
-    agent_name = f"aa_{source.stem.replace('-', '_')}"
-    return re.sub(r"(?m)^name:\s*.+$", f"name: {agent_name}", text, count=1)
+    if _CONTRACT_BEGIN in text or _CONTRACT_END in text:
+        if text.count(_CONTRACT_BEGIN) != 1 or text.count(_CONTRACT_END) != 1:
+            raise ValueError("duplicate or incomplete generated agent contract")
+        prefix, remainder = text.split(_CONTRACT_BEGIN, 1)
+        _, suffix = remainder.split(_CONTRACT_END, 1)
+        if suffix.strip() or not prefix.endswith("\n"):
+            raise ValueError("generated agent contract must be the final block")
+        text = prefix.rstrip() + "\n"
+    agent_name = Path(rendered_agent_filename(source)).stem
+    text = re.sub(r"(?m)^name:\s*.+$", f"name: {agent_name}", text, count=1)
+    return f"{text.rstrip()}\n\n{_CONTRACT_BEGIN}\n{contract.rstrip()}\n{_CONTRACT_END}\n"
 
 
 def repo_schema_sources(repo_root: Path) -> list[Path]:
@@ -435,19 +466,20 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
 
 def sync_agents_dir(repo_root: Path, agents_dir: Path, host: str | None = None) -> None:
     active, bench = _split_host_agents(repo_root, host)
-    _write_agents(agents_dir, active)
+    rendered = {source: render_agent_prompt(source, repo_root=repo_root) for source in active + bench}
+    _write_agents(agents_dir, active, rendered)
     if bench or bench_dir(agents_dir).is_dir():
-        _write_agents(bench_dir(agents_dir), bench)
+        _write_agents(bench_dir(agents_dir), bench, rendered)
 
 
-def _write_agents(agents_dir: Path, sources: list[Path]) -> None:
+def _write_agents(agents_dir: Path, sources: list[Path], rendered: dict[Path, str]) -> None:
     agents_dir.mkdir(parents=True, exist_ok=True)
     rendered_names = {rendered_agent_filename(source) for source in sources}
     for target_file in agents_dir.glob("*.md"):
         if target_file.name not in rendered_names:
             target_file.unlink()
     for source in sources:
-        (agents_dir / rendered_agent_filename(source)).write_text(render_agent_prompt(source))
+        (agents_dir / rendered_agent_filename(source)).write_text(rendered[source])
 
 
 def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
@@ -465,7 +497,7 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             if (target.agents_dir / name).exists():
                 bench_problems.append(f"{name}(active)")
             benched_file = bench_dir(target.agents_dir) / name
-            if not benched_file.exists() or benched_file.read_text() != render_agent_prompt(source):
+            if not benched_file.exists() or benched_file.read_text() != render_agent_prompt(source, repo_root=repo_root):
                 bench_problems.append(f"{name}(missing)")
     if target.skill_path or target.agents_dir:
         if not target.skill_path or not target.agents_dir or not target.skill_path.exists() or not target.agents_dir.exists():
@@ -476,7 +508,7 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             missing_agents = []
             for source in agent_sources:
                 target_file = target.agents_dir / rendered_agent_filename(source)
-                if not target_file.exists() or render_agent_prompt(source) != target_file.read_text():
+                if not target_file.exists() or render_agent_prompt(source, repo_root=repo_root) != target_file.read_text():
                     missing_agents.append(rendered_agent_filename(source))
 
     instructions_in_sync: bool | None = None
@@ -582,7 +614,7 @@ def repo_agent_inventory(repo_root: Path, host: str | None = None) -> dict[str, 
     for source in host_agent_sources(repo_root, host):
         stat = source.stat()
         rendered_name = rendered_agent_filename(source)
-        rendered_text = render_agent_prompt(source)
+        rendered_text = render_agent_prompt(source, repo_root=repo_root)
         digest = hashlib.sha256(rendered_text.encode()).hexdigest()
         inventory[rendered_name] = AgentFile(
             name=rendered_name,
