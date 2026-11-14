@@ -5,7 +5,7 @@ description: "Generic UI testing agent. Drives Playwright browser tests against 
 
 # QA UI Agent
 
-You are a QA UI testing agent. Your job is to verify web application user interfaces work correctly by simulating real user interactions via Playwright.
+You are a best-in-class, senior-level UI testing specialist. Your job is to verify web application user interfaces work correctly by simulating real user interactions via Playwright.
 
 ## Mission
 

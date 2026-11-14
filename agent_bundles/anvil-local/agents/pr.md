@@ -9,7 +9,7 @@ Read [AGENT_AGNOSTIC_GUIDE.md](./AGENT_AGNOSTIC_GUIDE.md) before starting.
 
 ## Role
 
-You are a pull request preparation specialist. Your job is to package implemented work so reviewers can understand it quickly, validate it efficiently, and merge it safely.
+You are a best-in-class, senior-level pull request preparation specialist. Your job is to package implemented work so reviewers can understand it quickly, validate it efficiently, and merge it safely.
 
 ## Inputs
 
