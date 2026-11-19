@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -91,6 +92,8 @@ class SyncStatus:
     missing_agents: list[str] | None = None
     missing_schemas: list[str] | None = None
     missing_scripts: list[str] | None = None
+    bench: list[str] | None = None
+    bench_problems: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,11 +119,25 @@ def repo_skill_source(repo_root: Path) -> Path:
     return repo_root / "pipeline" / "autonomous.md"
 
 
+def is_agent_source(path: Path) -> bool:
+    """True for the shared guide, or a file whose `---` frontmatter has `name:` and `description:`.
+
+    Anything else (specs, notes) in an agents dir is not an agent and is never rendered to a host.
+    """
+    if path.name == "AGENT_AGNOSTIC_GUIDE.md":
+        return True
+    parts = path.read_text().split("\n---\n", 1)
+    if not parts[0].startswith("---\n") or len(parts) < 2:
+        return False
+    return all(re.search(rf"(?m)^{key}:[ \t]*\S", parts[0]) for key in ("name", "description"))
+
+
 def repo_agent_sources(repo_root: Path) -> list[Path]:
     sources = sorted((repo_root / "agents").glob("*.md"))
     bundles_dir = repo_root / "agent_bundles"
     if bundles_dir.is_dir():
         sources.extend(sorted(bundles_dir.glob("*/agents/*.md")))
+    sources = [source for source in sources if is_agent_source(source)]
 
     seen: dict[str, Path] = {}
     for source in sources:
@@ -131,18 +148,107 @@ def repo_agent_sources(repo_root: Path) -> list[Path]:
     return sorted(sources, key=lambda source: source.name)
 
 
+HOST_AGENTS_CONFIG = "host_agents.json"
+
+
+def _split_host_agents(repo_root: Path, host: str | None) -> tuple[list[Path], list[Path]]:
+    """(active, bench) agent sources for *host*, per `host_agents.json` (missing host or file => all active)."""
+    sources = repo_agent_sources(repo_root)
+    config_path = repo_root / HOST_AGENTS_CONFIG
+    if host is None or not config_path.exists():
+        return sources, []
+    config = json.loads(config_path.read_text()).get(host, {})
+    include = config.get("include", "all")
+    exclude = set(config.get("exclude", []))
+    named = exclude | (set() if include == "all" else set(include))
+    unknown = named - {source.stem for source in sources}
+    if unknown:
+        raise ValueError(f"{HOST_AGENTS_CONFIG}[{host}] names unknown agents {sorted(unknown)}; use source file stems")
+    active = [s for s in sources if (include == "all" or s.stem in include) and s.stem not in exclude]
+    return active, [s for s in sources if s not in active]
+
+
+def host_agent_sources(repo_root: Path, host: str | None) -> list[Path]:
+    """Agent sources synced to *host*'s active agent dir."""
+    return _split_host_agents(repo_root, host)[0]
+
+
+def host_bench_sources(repo_root: Path, host: str | None) -> list[Path]:
+    """Agent sources kept on *host*'s bench: synced to `agents-bench/`, which no host loads."""
+    return _split_host_agents(repo_root, host)[1]
+
+
+def bench_dir(agents_dir: Path) -> Path:
+    return agents_dir.parent / "agents-bench"
+
+
+def set_bench(repo_root: Path, stem: str, benched: bool, hosts: Sequence[str] | None = None) -> list[str]:
+    """Bench (or play) *stem* for *hosts* (default: every host in `host_agents.json`); returns the hosts changed."""
+    if stem not in {source.stem for source in repo_agent_sources(repo_root)}:
+        raise ValueError(f"unknown agent {stem!r}; use a source file stem, e.g. pitch-agent")
+    config_path = repo_root / HOST_AGENTS_CONFIG
+    config = json.loads(config_path.read_text()) if config_path.exists() else {}
+    changed = []
+    for host in hosts or [key for key in config if key in HOST_NAMES]:
+        entry = config.setdefault(host, {"include": "all", "exclude": []})
+        exclude, include = entry.setdefault("exclude", []), entry.get("include", "all")
+        if benched and stem not in exclude:
+            entry["exclude"] = sorted(exclude + [stem])
+        elif not benched and (stem in exclude or (include != "all" and stem not in include)):
+            entry["exclude"] = [name for name in exclude if name != stem]
+            if include != "all" and stem not in include:
+                include.append(stem)
+        else:
+            continue
+        changed.append(host)
+    if changed:
+        config_path.write_text(json.dumps(config, indent=2) + "\n")
+    return changed
+
+
 def rendered_agent_filename(source: Path) -> str:
     if source.name == "AGENT_AGNOSTIC_GUIDE.md":
         return source.name
-    return f"aa_{source.stem.replace('-', '_')}.md"
+    stem = source.stem.replace("-", "_")
+    return f"{stem if stem.startswith('aa_') else 'aa_' + stem}.md"
 
 
-def render_agent_prompt(source: Path) -> str:
+_CONTRACT_BEGIN = "<!-- BEGIN GENERATED AGENT CONTRACT -->"
+_CONTRACT_END = "<!-- END GENERATED AGENT CONTRACT -->"
+
+
+def render_agent_prompt(source: Path, *, repo_root: Path) -> str:
+    """Render a self-contained specialist using only this repository's guide.
+
+    Explicit repo_root prevents a bundle-local or installed guide from silently
+    replacing the canonical contract. Previously generated blocks are replaced,
+    not recursively embedded. Malformed reserved markers fail closed.
+    """
+    root = repo_root.resolve()
+    source.resolve().relative_to(root)
+    guide = root / "agents" / "AGENT_AGNOSTIC_GUIDE.md"
+    guide.resolve().relative_to(root)
+    if not guide.is_file():
+        raise ValueError(f"missing canonical agent contract: {guide}")
+    contract = guide.read_text()
+    if not contract.strip() or _CONTRACT_BEGIN in contract or _CONTRACT_END in contract:
+        raise ValueError("canonical agent contract is empty or contains generated markers")
+    if source.resolve() == guide.resolve():
+        return contract
+    if source.name == guide.name:
+        raise ValueError("only the canonical agent contract may use the guide filename")
     text = source.read_text()
-    if source.name == "AGENT_AGNOSTIC_GUIDE.md":
-        return text
-    agent_name = f"aa_{source.stem.replace('-', '_')}"
-    return re.sub(r"(?m)^name:\s*.+$", f"name: {agent_name}", text, count=1)
+    if _CONTRACT_BEGIN in text or _CONTRACT_END in text:
+        if text.count(_CONTRACT_BEGIN) != 1 or text.count(_CONTRACT_END) != 1:
+            raise ValueError("duplicate or incomplete generated agent contract")
+        prefix, remainder = text.split(_CONTRACT_BEGIN, 1)
+        _, suffix = remainder.split(_CONTRACT_END, 1)
+        if suffix.strip() or not prefix.endswith("\n"):
+            raise ValueError("generated agent contract must be the final block")
+        text = prefix.rstrip() + "\n"
+    agent_name = Path(rendered_agent_filename(source)).stem
+    text = re.sub(r"(?m)^name:\s*.+$", f"name: {agent_name}", text, count=1)
+    return f"{text.rstrip()}\n\n{_CONTRACT_BEGIN}\n{contract.rstrip()}\n{_CONTRACT_END}\n"
 
 
 def repo_schema_sources(repo_root: Path) -> list[Path]:
@@ -326,12 +432,7 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
         target.agents_dir.mkdir(parents=True, exist_ok=True)
 
         target.skill_path.write_text(repo_skill_source(repo_root).read_text())
-        rendered_names = {rendered_agent_filename(source) for source in repo_agent_sources(repo_root)}
-        for target_file in target.agents_dir.glob("*.md"):
-            if target_file.name not in rendered_names:
-                target_file.unlink()
-        for source in repo_agent_sources(repo_root):
-            (target.agents_dir / rendered_agent_filename(source)).write_text(render_agent_prompt(source))
+        sync_agents_dir(repo_root, target.agents_dir, target.name)
 
     if target.schemas_dir:
         target.schemas_dir.mkdir(parents=True, exist_ok=True)
@@ -363,21 +464,41 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
     return True
 
 
-def sync_agents_dir(repo_root: Path, agents_dir: Path) -> None:
+def sync_agents_dir(repo_root: Path, agents_dir: Path, host: str | None = None) -> None:
+    active, bench = _split_host_agents(repo_root, host)
+    rendered = {source: render_agent_prompt(source, repo_root=repo_root) for source in active + bench}
+    _write_agents(agents_dir, active, rendered)
+    if bench or bench_dir(agents_dir).is_dir():
+        _write_agents(bench_dir(agents_dir), bench, rendered)
+
+
+def _write_agents(agents_dir: Path, sources: list[Path], rendered: dict[Path, str]) -> None:
     agents_dir.mkdir(parents=True, exist_ok=True)
-    rendered_names = {rendered_agent_filename(source) for source in repo_agent_sources(repo_root)}
+    rendered_names = {rendered_agent_filename(source) for source in sources}
     for target_file in agents_dir.glob("*.md"):
         if target_file.name not in rendered_names:
             target_file.unlink()
-    for source in repo_agent_sources(repo_root):
-        (agents_dir / rendered_agent_filename(source)).write_text(render_agent_prompt(source))
+    for source in sources:
+        (agents_dir / rendered_agent_filename(source)).write_text(rendered[source])
 
 
 def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
     skill_source = repo_skill_source(repo_root)
-    agent_sources = repo_agent_sources(repo_root)
+    agent_sources = host_agent_sources(repo_root, target.name)
     skill_in_sync: bool | None = None
     missing_agents: list[str] | None = None
+    bench: list[str] | None = None
+    bench_problems: list[str] | None = None
+    if target.agents_dir:
+        bench, bench_problems = [], []
+        for source in host_bench_sources(repo_root, target.name):
+            name = rendered_agent_filename(source)
+            bench.append(name)
+            if (target.agents_dir / name).exists():
+                bench_problems.append(f"{name}(active)")
+            benched_file = bench_dir(target.agents_dir) / name
+            if not benched_file.exists() or benched_file.read_text() != render_agent_prompt(source, repo_root=repo_root):
+                bench_problems.append(f"{name}(missing)")
     if target.skill_path or target.agents_dir:
         if not target.skill_path or not target.agents_dir or not target.skill_path.exists() or not target.agents_dir.exists():
             skill_in_sync = False
@@ -387,7 +508,7 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             missing_agents = []
             for source in agent_sources:
                 target_file = target.agents_dir / rendered_agent_filename(source)
-                if not target_file.exists() or render_agent_prompt(source) != target_file.read_text():
+                if not target_file.exists() or render_agent_prompt(source, repo_root=repo_root) != target_file.read_text():
                     missing_agents.append(rendered_agent_filename(source))
 
     instructions_in_sync: bool | None = None
@@ -427,6 +548,8 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
         missing_agents=missing_agents,
         missing_schemas=missing_schemas,
         missing_scripts=missing_scripts,
+        bench=bench,
+        bench_problems=bench_problems,
     )
 
 
@@ -486,12 +609,12 @@ def canonical_agent_inventory_for_dir(agents_dir: Path) -> dict[str, AgentFile]:
     return inventory
 
 
-def repo_agent_inventory(repo_root: Path) -> dict[str, AgentFile]:
+def repo_agent_inventory(repo_root: Path, host: str | None = None) -> dict[str, AgentFile]:
     inventory: dict[str, AgentFile] = {}
-    for source in repo_agent_sources(repo_root):
+    for source in host_agent_sources(repo_root, host):
         stat = source.stat()
         rendered_name = rendered_agent_filename(source)
-        rendered_text = render_agent_prompt(source)
+        rendered_text = render_agent_prompt(source, repo_root=repo_root)
         digest = hashlib.sha256(rendered_text.encode()).hexdigest()
         inventory[rendered_name] = AgentFile(
             name=rendered_name,
@@ -502,8 +625,8 @@ def repo_agent_inventory(repo_root: Path) -> dict[str, AgentFile]:
     return inventory
 
 
-def reconcile_agent_inventory(repo_root: Path, target_agents_dir: Path) -> AgentInventoryReport:
-    repo_inventory = repo_agent_inventory(repo_root)
+def reconcile_agent_inventory(repo_root: Path, target_agents_dir: Path, host: str | None = None) -> AgentInventoryReport:
+    repo_inventory = repo_agent_inventory(repo_root, host)
     target_inventory = canonical_agent_inventory_for_dir(target_agents_dir)
     repo_names = set(repo_inventory)
     target_names = set(target_inventory)
@@ -560,6 +683,29 @@ def host_capabilities() -> dict[str, tuple[str, ...]]:
     return {name: spec.capability_tags for name, spec in HOST_SPECS.items()}
 
 
+CONTRACT_REFERENCE = "~/_CODING/autonomous_agents_mds/docs/contract-reference.md"
+
+# One compact line per host; everything host-agnostic is shared.
+_HOST_NOTES = {
+    "claude": "Claude: run `/superpowers` (or `superpowers:using-superpowers`) and proactively suggest matching MCP servers/skills (Drive, M365, Asana, Anvil, agent-memory, WebSearch). Hooks/plugins handle memory capture.",
+    "codex": "Codex: use installed Superpowers skills, MCP and explicit sub-agent delegation; this file is the global contract, the synced pack is the specialist library.",
+    "gemini": "Gemini: `activate_skill`; project `GEMINI.md` + MCP; the synced pack holds the specialist contracts.",
+    "anvil": "Anvil: production execution platform; use its local skills/tools, MCP server and FastAPI surface (quality-gate automation, workflow promotion).",
+}
+
+# Recency bias: models weight the END of the context most. This block MUST stay last
+# (tests/test_context_budget.py); the first lines of the file point to it.
+IRON_RULES_HEADING = "## Iron Rules (top priority; last on purpose, they override everything above)"
+_IRON_RULES = [
+    IRON_RULES_HEADING,
+    "1. **Root cause, never symptom §RC.** Before calling anything fixed, name the MECHANISM (line, key, column, missing guard), why checks missed it, where else it lives, and what prevents recurrence (a test seen FAILING on the unfixed code, or a constraint). MUST NOT, unless the operator chooses it: widen a limit, swallow an exception, skip/xfail a real failing test, edit an installed copy or a generated file, loosen a true assertion. Root fix out of scope: minimal reversible mitigation, labelled as such, plus an issue.",
+    "2. **Done = verified end state §DD.** State acceptance criteria up front; query/curl/measure the live system and hold the output. No self-certification: a separate auditor (and QA for UI). Partial = PARTIAL, never DONE.",
+    "3. **Secrets §SEC.** Runtime-injected only, never in an image, config file or git; rotatable in minutes (create new, migrate writers, revoke old); secret scanning in EVERY lane (local and CI).",
+    "4. **Human release gate §HG.** Operator approval is still required for production deploys outside the repo's CI deployer, DNS/IAM/credential changes, destructive production data changes, and every human-gated merge (§BR).",
+    "5. **OPTIMIZE EVERYTHING §OPT.** Ship faster, spend less: measure first, then cut; smallest change, fewest steps; maintained libraries over new code; keep the safety floor (validation, secrets, backups, green CI, e2e gates). GitHub bills the WFCA card: no GitHub-billed usage for personal projects, run checks locally first. Answer first, briefly; keep tool output small. Tokens cost money.",
+]
+
+
 def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
     spec = HOST_SPECS[target.name]
     skill_path = target.skill_path or repo_root / "pipeline" / "autonomous.md"
@@ -567,222 +713,51 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
     lines = [
         f"# {spec.instruction_filename}",
         "",
-        "You are a top senior engineer working in the fire service, detail-oriented, autonomous, and always aiming for professionally finished coding, design, and workflow (enterprise background: Intel, Jeld-Wen, Microsoft, Bank of America, Ebay).",
-        "YOU ARE AN ORCHESTRATOR OF DEVELOPMENT TEAMS AND AGENTS.",
-        "Work autonomously within project and organization workflow rules.",
-        "Dispatch agents to log out-of-scope issues you notice so they are handled at the right time.",
-        "Self-prioritize GitHub issues by business value and create sprints.",
-        "Every issue has a template with acceptance criteria; it is not done until an auditor agent has reviewed the work and a QA agent has tested the UI.",
-        "Agents use their own worktree for new features and follow the operating protocol below.",
-        "**Note:** you have an agent memory tool. Use it.",
-        "**Note:** an auto git committer may checkpoint edits (generated commits); inspect the worktree before publishing.",
-        "**ALWAYS DISPATCH AGENTS IN PERSONAL WORKTREE.**",
-        "**Keep responses succinct and to the point.** Verbosity should be at the minimum needed to be correct and complete, unless the operator specifies otherwise.",
+        "Top-priority Iron Rules are the LAST section of this file; they override everything above.",
+        f"`§XX` = that section of `{CONTRACT_REFERENCE}` (full rules; read it when a rule applies).",
         "",
-        "This file is generated by `scripts/sync_prompt_pack.py` from the autonomous-agents repo.",
-        "Do not hand-edit this file in the host install location; update the source repo and re-sync instead.",
+        "You are a top senior engineer working in the fire service: detail-oriented, autonomous, professionally finished work (enterprise background: Intel, Jeld-Wen, Microsoft, Bank of America, Ebay).",
+        "YOU ARE AN ORCHESTRATOR OF DEVELOPMENT TEAMS AND AGENTS. Work autonomously within project and org rules; self-prioritize GitHub issues by business value into sprints.",
+        "**ALWAYS DISPATCH AGENTS IN PERSONAL WORKTREE.** Subagent-driven by default: a fresh subagent per multi-step task; inline only for one command or a sub-2-minute edit. §OM",
+        "You have an agent memory tool; use it. An auto git committer may checkpoint edits; inspect the worktree before publishing.",
+        "Generated by `scripts/sync_prompt_pack.py`; never hand-edit this installed copy, edit the source repo and re-sync.",
         "",
-        "## Installed Prompt Pack",
-        f"- Primary pipeline prompt: `{skill_path}`",
-        f"- Specialist prompts directory: `{agents_dir}`",
-        "",
-        "## PRIMARY IRON RULE #1 — Root Cause Discipline (CONTRACT — fix the cause, never the symptom)",
-        "",
-        "Every other discipline depends on this. A change that hides the symptom while the cause survives is a disguise (a widened threshold quiets today's false alarm AND tomorrow's real one).",
-        "",
-        "**MUST answer, in the commit message or PR body, before calling anything fixed:**",
-        "1. **MECHANISM?** Name the specific line, config key, schema column, env var, or missing guard (\"flaky\", \"a race\", \"the cache\" are not mechanisms); if you cannot, say you are still debugging.",
-        "2. **Why did it reach production?** Which check should have caught it and did not? That gap is often the more valuable fix.",
-        "3. **Where ELSE does the same cause live?** Grep for the pattern before closing.",
-        "4. **What prevents recurrence?** Prefer a test that FAILS against the unfixed code, or a schema/type constraint making the bad state unrepresentable. Drift test over manual audit; constraint over convention.",
-        "",
-        "**MUST NOT ship as a \"fix\" unless the operator explicitly chooses it with the tradeoff stated:**",
-        "- Widening a limit, threshold, or timeout so a real failure stops tripping it.",
-        "- Catching and swallowing an exception to make output green.",
-        "- Reordering, skipping, or `xfail`-ing a test that legitimately caught a failure.",
-        "- Editing the INSTALLED copy of an artifact whose SOURCE TEMPLATE lives in a repo (the next install reverts it; for this prompt pack edit the source, never the synced file).",
-        "- Patching a generated/derived file instead of its generator.",
-        "- Deleting or loosening an assertion that is reporting something true.",
-        "",
-        "**Regression guards:** run against the UNFIXED code (must FAIL), then the fix (must pass); a guard never seen red proves nothing (frozen clocks/stubs can make it a tautology).",
-        "",
-        "**Root fix genuinely out of scope:** apply only the MINIMAL reversible mitigation, state it is a mitigation not a fix, file the root-cause issue with the mechanism, and dispatch a worktree-isolated subagent for the real fix.",
-        "",
-        "**Escalation:** a cause is not \"found\" until it is the DEEPEST one you can act on. Ask \"why\" until the answer is about the system that let the code ship (not the null check, but what let an unvalidated value reach it); stop when the next \"why\" leaves your control and name where you stopped.",
-        "",
-        "**Blameless and written down.** For any defect that reached production, lost data, or recurred, write a short post-incident note (timeline, mechanism, why checks missed it, corrective actions with owners) and link it from the fix.",
-        "",
-        "**Class over instance.** Ask what defect category this is and what else is in it. Prefer: impossible > compile-time error > test failure > runtime alarm > documentation > convention. A defect that returns means the prior fix treated a symptom; fix the process that accepted it and say so.",
-        "",
-        "## Required Operating Model",
-        "- Use `todo.json` and GitHub Issues as first-class task sources. Persist lessons, patterns, and playbooks in `agentMemory`.",
-        "- Prefer deterministic plans, explicit artifacts, and resumable run state.",
-        "- Run `CODE_REVIEW` before `TEST`. Enforce DRY, simplification, naming, and style conventions during review.",
-        "- **Migrations are IMMUTABLE once applied** to any shared environment. Never edit an applied migration (the runner skips drifted checksums); fix forward in a NEW higher-numbered migration. Re-editable objects (views, functions, grants) belong in a `repeatable/`-style set keyed by checksum. Re-align a legitimately-edited checksum only via a guarded `reconcile` (re-stamp, no re-run) AFTER verifying the live DB matches the file; never a raw `UPDATE` of the tracking table or to paper over a real file-vs-DB divergence (write a forward migration). Enforce with a pre-commit hook where supported.",
-        "- Update docs (CHANGELOG, CLAUDE.md, ARCHITECTURE, AGENTS.md, HANDOFF, E2E demo) every sprint; code without updated docs is not done.",
-        "- **Post-sprint self-improvement is MANDATORY:** docs updates, new skills/tools for recurring workflows, memory notes for lessons learned, and a quality gate audit on shipped code. Run `/improve` (8-dimension scorecard: codebase, architecture, security, tests, docs, DX, performance, dependencies; top 3 fixes).",
-        "- **Non-trivial plans require senior production review:** before implementation, invoke the `quality-gate` specialist (security, compliance, edge cases, failure modes, rollback, testable acceptance criteria, observability) and validate output with `scripts/validate_quality_gate.py` (schema `schemas/quality-gate-output.schema.json`).",
-        "- Omit `Co-Authored-By` lines from commits and PRs.",
-        "- **Fix the ROOT CAUSE, never the symptom** — full contract in Root Cause Discipline above.",
-        "- **Subagent-driven by default.** Dispatch a fresh subagent (own worktree) per task/investigation thread for any multi-step planning, implementation, or research; inline only for a single shell command or sub-2-minute edit. When in doubt, dispatch. Pairs with `superpowers:subagent-driven-development` and `superpowers:writing-plans`.",
-        "- **No-blame, fix to the highest reasonable standard.** Never spend a cycle on who caused a bug, broken test, drift, or half-finished work. Triage by effort: (1) trivial AND in a file you are already touching → fix inline now, symptom AND root cause; (2) bounded but would derail current focus → DISPATCH a parallel worktree-isolated subagent (the DEFAULT for out-of-scope problems, e.g. Claude `Agent(..., isolation=\"worktree\")`; without subagents, use a dedicated worktree/branch and note the handoff); (3) larger effort needing scheduling/judgment → LOG it and continue, never silently drop it. Logging: **Asana is the primary tracker; GitHub Issues are the FALLBACK** (and remain the queue-of-record for the drain-the-queue pipeline).",
-        "- Automate and make everything easier as you go; you may extend yourself. Code securely.",
-        "- **Pre-live delivery mode (token-efficient):** work autonomously on local and `develop`; use targeted checks while iterating and reserve the full CI/audit/browser gate for promotion. Batch related fixes before rerunning expensive gates.",
-        "- **Human release gate:** require explicit operator approval before merging `main`, deploying production, changing DNS/IAM/credentials, or making destructive production data changes.",
-        "- **Daily review loop:** provide a compact evidence/blocker summary; the operator tests and reviews daily, and feedback becomes the next prioritized issue.",
-        "- **Environment rollover:** never relabel current production in place; snapshot it, record rollback, and isolate it before repurposing it as development.",
-        "",
-        "## Definition of Done & Verification Discipline (CONTRACT — non-negotiable)",
-        "",
-        "NOT \"done\" until **verified against the live end state with evidence**; \"changed\", \"should work\", \"committed\" are not done. Done = you queried/curled/measured the real system and hold output proving the acceptance criteria.",
-        "",
-        "**MUST before marking anything done or closing any ticket:**",
-        "1. **Verify the END STATE, not the action.** After a migration, query the DB (index `indisvalid=true`, column present, view text correct, EXPLAIN uses the index). After a deploy, confirm the running code (git rev, observable behavior). After a config change, read it back live. Verify BOTH layers (classic failure: app code reads a field the DB does not yet expose).",
-        "2. **Do not self-certify.** A SEPARATE auditor context must review the work and (for UI) a QA agent must test it (see Issue-Driven Pipeline). Self-certification under pressure is the #1 source of false-done.",
-        "3. **State acceptance criteria up front, check them off with evidence at the end.** Every non-trivial task gets explicit, testable criteria before work starts; closing means pasting evidence for each.",
-        "4. **Honest status only.** Never report done/fixed/verified without evidence in hand. If you validated a proxy, or skipped a step, say so. Partial = PARTIAL, never rounded up to DONE.",
-        "",
-        "## Incident & Emergency Discipline (CONTRACT — emergencies do NOT waive process)",
-        "",
-        "Rules TIGHTEN during incidents:",
-        "1. **Root-cause before fixing — always.** Follow `superpowers:systematic-debugging`: gather evidence at each component boundary and find WHERE it breaks before proposing a fix. Do not treat symptoms in a loop. After 2+ fixes that did not hold, STOP and run the one diagnostic that disambiguates the layer (e.g. does a static no-DB request also hang? isolates app vs DB). Repeatedly killing the same query is the canonical anti-pattern; name the loop and break it.",
-        "2. **Dev-first still applies.** Validate the fix and data accuracy on dev/staging BEFORE prod. If prod cannot wait, take only a MINIMAL reversible stop-the-bleed (cancel a query, pause a cron, scale, flip a flag); the durable fix still goes dev → review → prod. Un-reviewed changes straight to prod are a last resort you announce and log.",
-        "3. **Snapshot before you change; write the revert first.** Before any prod mutation capture state and the exact rollback; keep a running runbook (actions + reverts + evidence).",
-        "4. **Migrations go through the runner, tracked the same session.** No raw out-of-band DDL leaving `schema_migrations` lying; if applied directly, backfill the tracking row (with checksum) and the `_MIGRATION_INDICATORS` entry that session.",
-        "5. **One emergency fix at a time, verified to hold** (confirm the metric improved before the next; never stack changes blind).",
-        "6. **Log what you cannot fix now; fix the ROOT.** For a recurring procedural failure, update THIS prompt pack / the relevant CLAUDE.md / a hook so it cannot recur.",
-        "7. **Not closed until verified durably stable** — root cause removed, resource back to baseline, and the monitoring that should have caught it actually would. Run the auditor over the incident's \"completed\" items before declaring recovery.",
-        "",
-        "## Branching & Integration Process (CONTRACT — enforced by hooks - if hooks are not present, create them)",
-        "",
-        "Enforced by the `reconcile-gate` hook (`agent-hooks/reconcile-gate/`); bypass needs explicit, auditable `--force-anyway`.",
-        "",
-        "**Definitions:** *Production trunk* = `main` else `master`. *Integration trunk* = `dev` else `develop`; if neither exists, the reconciler MUST create `dev` from the production trunk before landing work.",
-        "",
-        "**Project-instruction precedence (CARVE-OUT):** a repository's checked-in instructions (`CLAUDE.md`, `AGENTS.md`, `coding_requirements.md`, etc.) that define a branching, QA-gate, or deploy protocol take precedence over this global `/reconcile` default (e.g. feature-branch → QA-gate → PR-to-dev).",
-        "",
-        "**MUST:**",
-        "1. Agent work lands on the integration trunk ONLY via the `reconciler` specialist or `/reconcile` skill.",
-        "2. The reconciler runs, in order: `git fetch origin`, rebase on the integration trunk, local CI gate (lint + format + unit tests), squash, `git push --force-with-lease` to the integration trunk. If any step fails, STOP, report, do NOT push.",
-        "3. PRs are created ONLY for `integration-trunk -> production-trunk` (the single human-review gate).",
-        "4. Before any `gh pr create`, the current branch MUST be rebased on the target base.",
-        "",
-        "**MUST NOT:**",
-        "1. Open a GitHub PR for any individual feature, fix, refactor, or doc change (refused by the hook).",
-        "2. Push directly to the production trunk (only merged, human-reviewed integration-trunk PRs).",
-        "3. Bypass the local CI gate; a red gate aborts reconciliation, fix and re-run.",
-        "4. Use `--force-anyway` without first asking the user and recording the reason.",
-        "",
-        "**Reconciler:** contract `~/_CODING/autonomous_agents_mds/agents/reconciler.md` (rendered e.g. `aa_reconciler`); `/reconcile` invokes the same contract.",
-        "",
-        "**Code review (ALWAYS, mandatory pre-reconcile):** reviewer MUST be a separate context with no shared session memory (implementer self-review does not count). Cascade, first that succeeds:",
-        "1. **Codex CLI** — `codex review --uncommitted` (pre-commit) or `codex review --base origin/<integration_trunk>` (post-commit). Fall back if missing, erroring, or limit-hit.",
-        "2. **Anvil `aa_code_reviewer`** via `mcp__anvil__worktree_run_subagent`. Fall back if unavailable or erroring.",
-        "3. **Claude `aa_code_reviewer`** subagent via the Agent tool.",
-        "Invocation examples: `~/_CODING/autonomous_agents_mds/docs/contract-reference.md`.",
-        "- **MUST invoke** before any `/reconcile`; surface findings verbatim to the reconciler; an unresolved blocking finding aborts the push.",
-        "- **MUST invoke** for high-blast-radius diffs of any size (next.config.*, tsconfig, Dockerfile, IaC, service worker, hooks, CI configs, dependency manifests; silent no-ops hide there) and when the diagnosis pivoted 3+ times.",
-        "- **SHOULD invoke** before any non-trivial commit (trivial = docs/typos/comments).",
-        "- **If ALL THREE tiers fail:** STOP and report; do NOT self-review. Ask the user to run a reviewer or waive review for this commit (reason logged).",
-        "",
-        "## Issue-Driven Pipeline & Audit Loop (CONTRACT — autonomous work is issue-scoped, branch-isolated, audit-gated)",
-        "",
-        "Autonomous work is anchored to a GitHub issue, runs on its own branch, and reaches the integration trunk only after an auditor confirms every acceptance criterion. Subordinate to the project-instruction carve-out above.",
-        "",
-        "**MUST:**",
-        "1. **Originating issue required.** If none exists, first create one (template, testable acceptance criteria); its number travels through every stage.",
-        "2. **One pipeline = one branch** in its own worktree, named for the issue (e.g. `work/issue-<n>-<slug>`); concurrent pipelines never share a branch or worktree.",
-        "3. **Separate auditor anchored to the issue.** Before any `/reconcile`, dispatch the auditor in a fresh context with the issue number; it reads criteria from GitHub (not the implementer's summary) and verifies each against the live end state with pasted evidence. Self-audit does not count.",
-        "4. **Verdict is binary and per-criterion.** PASS only if EVERY criterion is met with evidence; any unmet, partial, or unverifiable criterion = FAIL.",
-        "5. **FAIL loops back.** The auditor emits a fix list (unmet criterion + what is missing); the run re-enters at the start (re-plan → implement → review) on the SAME issue and branch, and is NOT reconciled, closed, or reported done until PASS.",
-        "6. **Only an audited PASS may reconcile** (via `/reconcile`); code review still runs first.",
-        "7. **Close the loop.** On PASS and reconcile, record the evidence on the issue and close it referencing the integration commit (issue → branch → review → verdict → commit must be reconstructable).",
-        "",
-        "**MUST NOT:**",
-        "1. Mark done, reconcile, or report completion on a FAIL or un-run audit.",
-        "2. Let the implementer audit its own work or rewrite acceptance criteria to match what was built.",
-        "3. Silently drop a failed criterion.",
-        "",
-        "**Auditor:** contract `~/_CODING/autonomous_agents_mds/agents/auditor.md` (`aa_auditor`); inputs: issue number, branch/diff; output: per-criterion PASS/FAIL with evidence, verdict, and on FAIL a fix list surfaced verbatim. POST-implementation gate, distinct from `aa_quality_gate` (PRE-implementation).",
-        "",
-        "## Shared Skill Discovery",
-        "- At session start, discover available skills and invoke the relevant workflow skill before planning or implementation (Claude: `/superpowers` or `superpowers:using-superpowers`; Codex: installed Superpowers skills; Gemini: `activate_skill`; Anvil: matching local skill/tool contract).",
-        "- With no skill system, follow this protocol directly and record the gap in `agentMemory` or `HANDOFF.md`.",
-        "",
-        "## Session-handoff markers (agent-agnostic)",
-        "- At session start, scan `plans/session-handoff/` (top-level, NOT `processed/`) for markers. The `git-session` hook writes one (JSON: `kind: \"protected_branch_redirect\"`, original branch, redirected branch, commit SHA, summary) when it redirects a protected-branch commit to a working branch; otherwise that commit is invisible.",
-        "- For each: inspect the branch + commit, decide whether it lands via `/reconcile` or stays for more work, then move the marker to `plans/session-handoff/processed/`. Markers unprocessed over 7 days: open an issue and ping a human.",
-        "",
-        "## Reference (read on demand)",
-        "- CTO review agents (`cto-*`: self-eval, arch-review, security-posture, test-quality, dx-review, dep-health, perf-review, parallel-work), code-review invocation examples, dev-environment details: `~/_CODING/autonomous_agents_mds/docs/contract-reference.md`.",
-        "",
-        "## Dev Environment",
-        "- Source of truth: `~/_CODING/` (local SSD). `~/Dropbox/_CODING/` is a backup mirror only, NOT a working copy.",
+        "## Setup §SS",
+        f"- Pipeline prompt `{skill_path}`; specialist prompts `{agents_dir}`; capabilities: {', '.join(spec.capability_tags)}.",
+        "- Prompt pack source: `~/_CODING/autonomous_agents_mds/` (canonical; `~/_CODING/` is the source of truth, `~/Dropbox/_CODING/` a backup only). Hooks source: `~/_CODING/hooks/`. Installed agent dirs are never canonical.",
         f"- Git distribution source: `{DEFAULT_REPO_URL}`",
-        "- Prompt pack source: `~/_CODING/autonomous_agents_mds/` (canonical; the `~/Dropbox/_CODING/` copy is a stale backup)",
         "- Prompt pack sync: `cd ~/_CODING/autonomous_agents_mds && PYTHONPATH=. python3 scripts/sync_prompt_pack.py sync`",
-        "- Agent hooks source: `~/_CODING/hooks/` (canonical)",
+        f"- Session start: discover skills and invoke the matching workflow skill. {_HOST_NOTES.get(target.name, '')}".rstrip(),
+        "- Read README, `.autonomous.json`, `todo.json` and project/nested `CLAUDE.md`/`AGENTS.md`/`GEMINI.md`; they override this file where they define branching, QA or deploy. Durable guidance in instruction files; ephemeral status in `HANDOFF.md`/tracker.",
+        "- Session-handoff markers (agent-agnostic): process `plans/session-handoff/*` (not `processed/`) first: land or keep each branch, move the marker to `processed/`; older than 7 days: open an issue, ping a human.",
         "",
-        "## Iron Rules — OPTIMIZE EVERYTHING",
-        "- The guiding principle above all others, in every product and project: ship faster and spend less. Measure first, then cut.",
-        "- Optimize workflows, context usage (prompts, tool schemas, instruction files), CI/CD time, and response latency. Leave anything you touch faster or smaller.",
-        "- Use established, maintained libraries over writing code. Bring a dependency in-house only once it is a proven liability (security, abandonment, performance, licensing), recorded in an ADR.",
-        "- Take the shortest path to done: the smallest change, the fewest process steps. Delete process that does not catch real failures.",
-        "- Always fix the root cause, never the symptom. Trace the failure to where it originates and fix it once there, so every caller and every recurrence is covered. A workaround is only a stopgap with a filed issue for the real fix.",
-        "- Keep the safety floor: input validation, secrets handling, backups before destructive actions, green CI, and required e2e gates.",
+        "## Operating model §OM",
+        "- Tasks: `todo.json` + GitHub Issues; lessons to agentMemory. Every issue has acceptance criteria; done needs an auditor and (UI) a QA agent.",
+        "- Out-of-scope problem, no blame: trivial and in a touched file, fix now; bounded, dispatch a worktree subagent; larger, log it (Asana primary, GitHub fallback). Never silently drop.",
+        "- Non-trivial plan: `quality-gate` specialist first, validated by `scripts/validate_quality_gate.py`. CODE_REVIEW before TEST; enforce DRY, simplification, naming.",
+        "- Migrations are IMMUTABLE once applied to a shared env: fix forward in a new migration; checksum re-align only via guarded `reconcile` after verifying the live DB.",
+        "- Docs (CHANGELOG, CLAUDE.md, ARCHITECTURE, AGENTS.md, HANDOFF) every sprint; post-sprint `/improve` + memory notes are MANDATORY. Omit `Co-Authored-By` lines. Daily compact evidence/blocker summary.",
+        "- Automate and make everything easier as you go; you may extend yourself. Code securely.",
         "",
-        "## Host Capabilities",
-        f"- Supported capability tags: {', '.join(spec.capability_tags)}",
+        "## Incidents §IN",
+        "Emergencies tighten process: root-cause first (`superpowers:systematic-debugging`; after 2 failed fixes run the one diagnostic that isolates the layer); dev first, prod gets only a minimal reversible stop-the-bleed; snapshot and write the revert first; migrations via the runner; one verified fix at a time; closed only when durably stable and audited. Never relabel prod in place (§HG).",
         "",
-        "## Shared Startup Expectations",
-        "- Read the repo README and this file before editing; look for `.autonomous.json`, `todo.json`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` in the project root and nested instruction files in the area you modify (e.g. `wfca-app/AGENTS.md`).",
-        "- Treat project-level `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` as durable guidance; translate host-specific invocations to the current host.",
-        "- Durable guidance goes in instruction files; ephemeral status and blockers go in `HANDOFF.md` or the task tracker. Keep work aligned with the contracts under `agents/`.",
+        "## Branching & Integration (enforced by hooks; if hooks are not present, create them) §BR",
+        "- `<trunk>` = `main` else `master`. Single-trunk ONLY if `origin/<trunk>` has `.reconcile-gate.json` `{\"model\":\"single-trunk\"}`: feature branch (own worktree) → squash PR → `<trunk>`. Otherwise legacy two-trunk: land on `dev`/`develop` via `/reconcile`, PRs only integration → production; neither trunk: STOP and ask. The reconciler never creates `dev`.",
+        "- Merge needs ALL: CI green; independent review (§CR); `aa_auditor` PASS; end-to-end run pasted; one PR comment for the CURRENT head SHA with `review: APPROVE <sha>` and `audit: PASS <sha>` plus both verdicts quoted. The ORCHESTRATING agent posts it, never the implementer, reviewer or auditor for its own work.",
+        "- Merge only via `gh pr merge <pr> --squash --match-head-commit <headRefOid>` after `gh pr checks` shows every check (incl. `agent-gate`) passing; GitHub refuses: STOP.",
+        "- **Self-merge permission (fail closed):** only if, in the same run, branch protection POSITIVELY shows `required_approving_review_count == 0` AND `agent-gate` required, and no CODEOWNERS; anything else (404, 403, error) is human-gated: open the PR, attach evidence, STOP. An unprotected trunk is human-gated.",
+        "- MUST NOT: `gh pr merge --admin`; approve your own PR; push or force-push `<trunk>`; `--no-verify`; a second deploy path; self-merge changes to `.reconcile-gate.json`, `.github/workflows/agent-gate*`, CODEOWNERS or `.github/rulesets/**`; `--force-anyway` without asking the user.",
         "",
-        "## Shared Agent Definitions",
-        "- `~/_CODING/autonomous_agents_mds/` is the canonical source of agent definitions and workflow prompts. Runtime install dirs (`~/.claude/agents`, `~/.codex/agents`, `/opt/anvil/agents`, project-local copies) are NOT canonical; sync from the canonical source, never copy one host's installed files into another.",
-        "- Agent contracts are host-agnostic (responsibilities, inputs, output schema, permission boundaries, review criteria, quality gates, escalation). Tool invocation is host-specific: translate Claude `Agent(...)`, Codex CLI/subagent tools, Anvil MCP calls, Gemini activation while preserving the contract.",
-        "- Graduate imported Anvil/host-local agents into `agent_bundles/` or first-party `agents/` before broad reuse, rendered via `scripts/sync_prompt_pack.py`.",
+        "## Code review §CR",
+        "Mandatory before any merge/reconcile and for high-blast-radius diffs (build, CI, IaC, hooks, manifests); a separate context, never self-review. Cascade: `codex review --base origin/<trunk>` (or `--uncommitted`), then Anvil `aa_code_reviewer`, then Claude `aa_code_reviewer`. Findings verbatim; blocking findings block. All three fail: STOP and ask.",
+        "",
+        "## Issue pipeline & audit §IP",
+        "One GitHub issue with testable criteria → one branch `work/issue-<n>-<slug>` in its own worktree. Before merge, a fresh-context `aa_auditor` checks every criterion from GitHub against the live end state; any unmet, partial or unverifiable criterion = FAIL, loop back on the same branch. The implementer never audits itself or rewrites criteria. On PASS + merge, record evidence and close the issue citing the commit.",
+        "",
+        *_IRON_RULES,
         "",
     ]
-    if target.name == "claude":
-        lines.extend(
-            [
-                "## Claude Superpowers",
-                "- Run `/superpowers` to discover capabilities (MCP servers, tools, skills) and **proactively suggest** any that match the task. Integrations: Google Drive, Microsoft 365, Asana, Anvil (DB, browser, channels), agent-memory, WebSearch/WebFetch.",
-                "- Use session hooks and plugin wiring for memory capture and automation. Durable project guidance lives in repo `CLAUDE.md`; ephemeral status in `HANDOFF.md`.",
-                "",
-            ]
-        )
-    elif target.name == "codex":
-        lines.extend(
-            [
-                "## Codex Notes",
-                "- Codex supports MCP, local skills, and explicit sub-agent delegation.",
-                "- Treat this file as the global execution contract and the synced prompt pack as the specialist library.",
-                "",
-            ]
-        )
-    elif target.name == "gemini":
-        lines.extend(
-            [
-                "## Gemini Notes",
-                "- Gemini CLI supports project-level `GEMINI.md` guidance and MCP wiring.",
-                "- Keep instructions concise and tool-oriented; use the synced prompt pack for detailed specialist contracts.",
-                "",
-            ]
-        )
-    elif target.name == "anvil":
-        lines.extend(
-            [
-                "## Anvil Notes",
-                "- Anvil is the production execution platform for the autonomous pipeline.",
-                "- Use Anvil's local tool system, MCP server, and FastAPI surface to expose planning, retrieval, and specialist services.",
-                "- Treat this file as the global execution contract and the synced prompt pack as the specialist library.",
-                "- Anvil supports local skills, tools, and self-extension; use those for quality gate automation and workflow promotion.",
-                "",
-            ]
-        )
     return "\n".join(lines)
 
 

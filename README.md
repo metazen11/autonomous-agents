@@ -18,6 +18,7 @@ This repository is not yet a fully self-driving production orchestrator. The ver
 - [docs/system-overview.md](docs/system-overview.md)
 - [docs/architectural-overview.md](docs/architectural-overview.md)
 - [docs/host-integration.md](docs/host-integration.md)
+- [docs/agent-capabilities.md](docs/agent-capabilities.md) — role capabilities, self-contained generated agents, skill audit and activation limits
 - [examples/README.md](examples/README.md)
 
 ## Current Architecture
@@ -143,7 +144,19 @@ python3 scripts/sync_prompt_pack.py update-and-sync --repo-root ~/_CODING/autono
 Agent inventory is centralized in two places:
 
 - `agents/` for first-party workflow and delivery specialists
-- `agent_bundles/<bundle>/agents/` for curated marketplace/plugin agents copied verbatim from their canonical source
+- `agent_bundles/<bundle>/agents/` for curated marketplace/plugin agents copied from their canonical source (frontmatter `description` trimmed to the 200-char budget)
+
+Context budget (issue #20). Every host session loads the rendered instruction file and every agent description, so both have a budget:
+
+- `PYTHONPATH=. python3 scripts/measure_context.py` prints bytes and estimated tokens per host file and agent-description block.
+- The rendered file is short (Claude/Codex 8 KB or less). The full rules live in `docs/contract-reference.md` under `§XX` IDs. The top-priority Iron Rules come last, because models weight the end of the context most, and the first line points to them. `tests/test_context_budget.py` guards the size, the rule IDs and the ordering.
+- `host_agents.json` selects agents per host (`include`: `"all"` or a list of stems; `exclude`: stems). A host that is not listed gets every agent. Agent sources are never deleted.
+- **The bench (issue #23).** A host's `exclude` list is its bench: those agents sync to `<host agent dir parent>/agents-bench/` (e.g. `~/.claude/agents-bench/`, `~/.codex/agents-bench/`), which no host loads, so they cost no context but stay one command away:
+  - `PYTHONPATH=. python3 scripts/sync_prompt_pack.py bench list` shows each host's bench.
+  - `... bench play <stem> [--host claude]` makes an agent active; `... bench sit <stem>` benches it again. Both edit `host_agents.json` and re-sync only the hosts they changed (default: every host in the file). Commit the `host_agents.json` change to keep it.
+  - `check` prints `bench=<n> ok` per host and fails if a benched agent is also in the active dir or missing from the bench.
+  - Benched today on Claude and Codex (operator 2026-10-25): the finance bundle (re-enable for a centralize.biz finance tenant; today the tenant = data), `anvil-qa` and `anvil-qa-ui` (Anvil console only), and `regime-filter-tuner` and `strategy-honesty-checker` (etrade/trading repo only: `bench play` them, or install them project-level in that repo).
+- Only files with `---` frontmatter holding `name:` and `description:` (plus `AGENT_AGNOSTIC_GUIDE.md`) are agents. Anything else in an agents dir, such as `agents/secret_rotator.SPEC.md`, is never rendered to a host.
 
 Quick setup on another Mac:
 

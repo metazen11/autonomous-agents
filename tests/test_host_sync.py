@@ -32,6 +32,83 @@ from scripts.sync_prompt_pack import resolve_output_path
 
 
 class HostSyncTest(unittest.TestCase):
+    def test_render_embeds_and_refreshes_contract_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "agents").mkdir()
+            guide = root / "agents/AGENT_AGNOSTIC_GUIDE.md"
+            guide.write_text("# Shared rules\nFIRST CONTRACT\n")
+            source = root / "bundled.md"
+            source.write_text("---\nname: bundled\ndescription: demo\nmodel: local\n---\n# Agent\nROLE BODY\n")
+            rendered = render_agent_prompt(source, repo_root=root)
+            self.assertIn("model: local", rendered)
+            self.assertIn("ROLE BODY", rendered)
+            self.assertIn(guide.read_text().strip(), rendered)
+            source = root / rendered_agent_filename(source)
+            source.write_text(rendered)
+            self.assertEqual(rendered_agent_filename(source), "aa_bundled.md")
+            self.assertEqual(render_agent_prompt(source, repo_root=root), rendered)
+            guide.write_text("# Shared rules\nREVISED CONTRACT\n")
+            refreshed = render_agent_prompt(source, repo_root=root)
+            self.assertNotIn("FIRST CONTRACT", refreshed)
+            self.assertEqual(refreshed.count("REVISED CONTRACT"), 1)
+            self.assertEqual(refreshed.count("BEGIN GENERATED AGENT CONTRACT"), 1)
+
+    def test_render_uses_canonical_guide_for_every_real_specialist(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        guide = root / "agents/AGENT_AGNOSTIC_GUIDE.md"
+        for source in repo_agent_sources(root):
+            with self.subTest(source=source):
+                rendered = render_agent_prompt(source, repo_root=root)
+                if source == guide:
+                    self.assertEqual(rendered, guide.read_text())
+                else:
+                    self.assertIn(guide.read_text().strip(), rendered)
+                    self.assertEqual(rendered.count("BEGIN GENERATED AGENT CONTRACT"), 1)
+
+    def test_missing_contract_fails_before_agent_directory_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/core.md").write_text("---\nname: core\ndescription: demo\n---\nBody\n")
+            target = Path(tmpdir) / "installed"
+            target.mkdir()
+            previous = target / "old.md"
+            previous.write_text("preserve me")
+            with self.assertRaisesRegex(ValueError, "missing canonical"):
+                sync_agents_dir(root, target)
+            self.assertEqual(previous.read_text(), "preserve me")
+            self.assertEqual(list(target.iterdir()), [previous])
+
+    def test_bundle_local_contract_cannot_override_canonical_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "agents").mkdir()
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("CANONICAL")
+            bundle = root / "agent_bundles/example/agents"
+            bundle.mkdir(parents=True)
+            (bundle / "AGENT_AGNOSTIC_GUIDE.md").write_text("WRONG GUIDE")
+            source = bundle / "example.md"
+            source.write_text("---\nname: example\ndescription: demo\n---\nBody")
+            rendered = render_agent_prompt(source, repo_root=root)
+            self.assertIn("CANONICAL", rendered)
+            self.assertNotIn("WRONG GUIDE", rendered)
+
+    def test_malformed_generated_contract_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "agents").mkdir()
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("CANONICAL")
+            source = root / "agent.md"
+            for block in (
+                "<!-- BEGIN GENERATED AGENT CONTRACT -->",
+                "<!-- END GENERATED AGENT CONTRACT -->",
+                "<!-- BEGIN GENERATED AGENT CONTRACT -->\nx\n<!-- END GENERATED AGENT CONTRACT -->\nafter",
+            ):
+                source.write_text("---\nname: agent\ndescription: demo\n---\n" + block)
+                with self.assertRaises(ValueError):
+                    render_agent_prompt(source, repo_root=root)
+
     def test_load_dotenv_and_discover_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             env_path = Path(tmpdir) / ".env"
@@ -53,9 +130,10 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
-            (repo_root / "agents" / "two.md").write_text("agent two\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
+            (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
             target_root = Path(tmpdir) / "target"
             target = discover_targets(
@@ -86,8 +164,9 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
 
             # Mirror the real /opt/anvil case: the git target already has
             # committed copies of the sync-destination files (CLAUDE.md,
@@ -173,8 +252,9 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
-            (repo_root / "agents" / "one.md").write_text("agent one\n")
+            (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
 
             target_root = Path(tmpdir) / "target"
             target = discover_targets(
@@ -195,7 +275,8 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             target_dir = Path(tmpdir) / "target"
             (repo_root / "agents").mkdir(parents=True)
-            (repo_root / "agents" / "core-agent.md").write_text("---\nname: core-agent\n---\n\nBody\n")
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
+            (repo_root / "agents" / "core-agent.md").write_text("---\nname: core-agent\ndescription: demo\n---\n\nBody\n")
             target_dir.mkdir()
             (target_dir / "core-agent.md").write_text("legacy\n")
 
@@ -210,40 +291,45 @@ class HostSyncTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "agent_bundles" / "financial-services" / "agents").mkdir(parents=True)
-            (repo_root / "agents" / "core.md").write_text("core\n")
+            (repo_root / "agents" / "core.md").write_text("---\nname: core\ndescription: demo\n---\ncore\n")
             bundle_agent = repo_root / "agent_bundles" / "financial-services" / "agents" / "earnings-reviewer.md"
-            bundle_agent.write_text("financial\n")
+            bundle_agent.write_text("---\nname: earnings-reviewer\ndescription: demo\n---\nfinancial\n")
 
             sources = repo_agent_sources(repo_root)
 
-        self.assertEqual([source.name for source in sources], ["core.md", "earnings-reviewer.md"])
+        self.assertEqual([source.name for source in sources], ["AGENT_AGNOSTIC_GUIDE.md", "core.md", "earnings-reviewer.md"])
 
     def test_agents_install_with_aa_namespace(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            source = Path(tmpdir) / "earnings-reviewer.md"
+            repo_root = Path(tmpdir)
+            (repo_root / "agents").mkdir()
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("CONTRACT")
+            source = repo_root / "earnings-reviewer.md"
             source.write_text("---\nname: earnings-reviewer\ndescription: demo\n---\n\nBody\n")
 
             self.assertEqual(rendered_agent_filename(source), "aa_earnings_reviewer.md")
-            self.assertIn("name: aa_earnings_reviewer", render_agent_prompt(source))
-            self.assertIn("Body", render_agent_prompt(source))
+            self.assertIn("name: aa_earnings_reviewer", render_agent_prompt(source, repo_root=repo_root))
+            self.assertIn("Body", render_agent_prompt(source, repo_root=repo_root))
 
     def test_reconcile_agent_inventory_detects_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir) / "repo"
             target_dir = Path(tmpdir) / "target"
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             target_dir.mkdir()
-            (repo_root / "agents" / "core.md").write_text("---\nname: core\n---\n\nrepo\n")
-            (target_dir / "aa_core.md").write_text("---\nname: aa_core\n---\n\ntarget\n")
+            (repo_root / "agents" / "core.md").write_text("---\nname: core\ndescription: demo\n---\n\nrepo\n")
+            (target_dir / "aa_core.md").write_text("---\nname: aa_core\ndescription: demo\n---\n\ntarget\n")
             (target_dir / "host-only.md").write_text("host\n")
 
             report = reconcile_agent_inventory(repo_root, target_dir)
 
-        self.assertEqual(report.repo_count, 1)
+        self.assertEqual(report.repo_count, 2)
         self.assertEqual(report.target_count, 2)
         self.assertEqual(report.missing_from_repo, ["host-only.md"])
-        self.assertEqual(report.missing_from_target, [])
+        self.assertEqual(report.missing_from_target, ["AGENT_AGNOSTIC_GUIDE.md"])
         self.assertEqual(report.diverged, ["aa_core.md"])
 
     def test_sync_supports_instruction_only_target(self) -> None:
@@ -251,6 +337,7 @@ class HostSyncTest(unittest.TestCase):
             repo_root = Path(tmpdir) / "repo"
             (repo_root / "pipeline").mkdir(parents=True)
             (repo_root / "agents").mkdir(parents=True)
+            (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
             target = discover_targets(
                 repo_root,
@@ -274,7 +361,7 @@ class HostSyncTest(unittest.TestCase):
         self.assertIn("gemini:", report)
 
     def test_primary_hosts_share_updated_global_protocols(self) -> None:
-        repo_root = Path("/Users/mz/_CODING/autonomous_agents_mds")
+        repo_root = Path(__file__).resolve().parents[1]
         for host in ("claude", "codex", "gemini", "anvil"):
             spec = HOST_SPECS[host]
             instructions = render_host_instructions(
@@ -295,9 +382,35 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("Git distribution source: `https://github.com/metazen11/autonomous-agents.git`", instructions)
             self.assertIn("Prompt pack source: `~/_CODING/autonomous_agents_mds/`", instructions)
             self.assertIn("Prompt pack sync: `cd ~/_CODING/autonomous_agents_mds", instructions)
+            # Single-trunk is a positive per-repo opt-in; fail closed; no dev creation.
+            self.assertIn('.reconcile-gate.json', instructions)
+            self.assertIn("review: APPROVE <sha>", instructions)
+            self.assertIn("audit: PASS <sha>", instructions)
+            self.assertIn("required_approving_review_count == 0", instructions)
+            self.assertIn("never creates `dev`", instructions)
+            self.assertIn("The ORCHESTRATING agent", instructions)
+            self.assertNotIn("permissions.admin", instructions)
+            self.assertIn("--match-head-commit", instructions)
+            self.assertIn("An unprotected trunk is human-gated", instructions)
+            rule = instructions[instructions.index("**Self-merge permission"):].split("\n")[0]
+            self.assertIn("agent-gate", rule)
+            self.assertIn(".github/rulesets/**", instructions)
+            self.assertIn("Operator approval is still required", instructions)
+            self.assertNotIn("= fast-path", instructions)
+            self.assertNotIn("counts as", instructions.split("**Self-merge permission")[1].split("**MUST NOT")[0])
+            self.assertNotIn("reconciler MUST create `dev`", instructions)
+            self.assertNotIn("Pre-live delivery mode", instructions)
             # Installed files live outside the repo; a relative docs/ pointer dangles there.
             self.assertNotIn("`docs/contract-reference.md`", instructions)
             self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)
+
+    def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for sub in ("agents", "pipeline", "docs"):
+            for f in (root / sub).rglob("*.md"):
+                if "superpowers" in f.parts:
+                    continue
+                self.assertNotIn("origin/dev", f.read_text(), str(f))
 
     def test_install_from_git_command_uses_repo_as_distribution_source(self) -> None:
         command = install_from_git_command(
