@@ -1,5 +1,6 @@
 ---
 name: infra-checker
+model: haiku
 description: "Agent-agnostic infrastructure health checker. Performs read-only validation of services, endpoints, certificates, containers, and environment connectivity."
 ---
 

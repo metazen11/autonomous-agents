@@ -1,5 +1,6 @@
 ---
 name: docs
+model: haiku
 description: "Agent-agnostic documentation specialist. Updates operator-facing and developer-facing docs, examples, migration notes, and focused inline explanations for shipped changes."
 ---
 
