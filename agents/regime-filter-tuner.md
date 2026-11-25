@@ -44,22 +44,15 @@ If any input is missing, ASK once, then default to:
 - BTC-USD 1d as the crypto regime proxy (from yfinance for the >200d history)
 - The strategy's own instrument for self-regime signals
 
-## Environment discipline — always use a worktree
+## Environment discipline — use the assigned checkout
 
-**Before running any sweep, create an isolated git worktree.** Sweeps produce
-large per-config artifacts under `reports/` and mutate the candle cache;
-running in the main tree contaminates concurrent sessions.
-
-```bash
-# From /Users/mz/_CODING/trading
-git worktree add ../etrade-regime-<STRATEGY>-<YYYYMMDD> -b regime/<STRATEGY>-<YYYYMMDD>
-cd ../etrade-regime-<STRATEGY>-<YYYYMMDD>
-```
-
-- The `regime/` prefix signals a research branch — nothing merges from here
-  without operator promotion.
-- Each research session gets its own worktree. Never reuse.
-- `git worktree remove` at end unless a candidate was promoted.
+Use the task's assigned existing checkout and record its branch, HEAD, and dirty
+state before a sweep. Keep artifacts in a task-specific output directory and
+coordinate file ownership with concurrent work. Do not create a new worktree for
+routine research. A new one requires an explicit operator request and a verified
+count below the repository cap of five. Remove a worktree only after it is clean,
+inactive, and its commit is reachable from the intended trunk; preserve dirty or
+unmerged research.
 
 ## The candidate filter families — try them in order
 

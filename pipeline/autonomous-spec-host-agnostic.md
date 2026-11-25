@@ -74,6 +74,7 @@ Every host should assign explicit operational responsibilities before invoking s
 
 - Owns task pickup, branch strategy, run state, artifact capture, commit sequencing, PR creation, and final reporting.
 - Owns the primary working branch or worktree.
+- Carries the latest explicit owner authorization across sessions and worktrees; does not ask for the same approval twice.
 - Resolves conflicts between worker outputs.
 
 ### Planner
@@ -123,13 +124,22 @@ Every host should assign explicit operational responsibilities before invoking s
 ## Repo Management Rules
 
 - Only the orchestrator should own the final integration branch by default.
-- Worker agents should use isolated branches, worktrees, or patch-style handoffs when parallel write ownership exists.
+- Worker agents use the assigned existing checkout by default. Coordinate explicit, non-overlapping file ownership for parallel work; do not create a worktree just to dispatch an agent. A new worktree requires an explicit owner request and a verified count below the repository cap of five.
 - No agent may commit unless its contract explicitly grants commit authority.
 - By default, only the orchestrator creates the final commit and pull request.
 - Every write-capable agent must declare `allowed_write_scope`.
 - Overlapping write scopes must be serialized or escalated with an explicit merge plan.
 - Every handoff must include `changed_files`, `artifacts`, `verification_run`, and `handoff_status`.
-- If unrelated local changes or unsafe branch state are present, the orchestrator must pause with `needs_human`.
+- Preserve unrelated local changes and continue independent authorized work. Set `needs_human` only when unsafe state concretely blocks the frozen task; never reset or discard unowned edits to make the checkout clean.
+
+## Owner Authority and Bounded Autonomy
+
+- The owner sets the approved queue, priorities, decisions, and risk tolerance.
+- Work through approved tasks in sequence without asking for the same approval again. Carry the latest explicit owner instruction across sessions and worktrees; it supersedes older dispatches or defaults for the scope it names.
+- Every task keeps a frozen specification and explicit completion criteria. Do not invent adjacent tasks or add an agent-selected approval gate.
+- Stop when the approved queue is empty, at a real decision fork, or at a concrete blocker. Report the mechanism and keep working on independent authorized tasks.
+- Queue membership alone does not authorize work touching live systems, money, production deployments, or credentials. An explicit owner authorization for such work persists for its stated scope and does not need to be repeated.
+- A task queue or dispatch cannot override a legal, platform, broker/account, or technical constraint. Name the concrete constraint and continue unblocked work.
 
 ## Canonical Task Shape
 

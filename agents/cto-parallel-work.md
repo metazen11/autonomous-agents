@@ -51,7 +51,7 @@ conflict_analysis:
 | Pattern | Parallelizable? | Strategy |
 |---------|----------------|----------|
 | No shared writes | YES | Run freely in parallel |
-| Shared writes, different sections | MAYBE | Use worktrees + manual merge |
+| Shared writes, different sections | MAYBE | Assign non-overlapping file/section ownership in the existing checkout; use a new worktree only on explicit owner request and after the shared guard verifies the cap |
 | Shared writes, same section | NO | Serialize — one after the other |
 | Dependency chain | NO | A must finish before B starts |
 | Shared reads only | YES | No conflict possible |
@@ -62,12 +62,12 @@ For parallelizable tasks:
 
 ```yaml
 isolation_strategy:
-  method: worktree | branch | file_scope
+  method: branch | file_scope by default; worktree only on explicit owner request
 
   worktree:
-    when: "Tasks edit different modules entirely"
-    how: "git worktree add .claude/worktrees/task-a -b task-a-branch"
-    merge: "Sequential merge to main branch after both complete"
+    when: "The owner explicitly requests isolation and the shared guard confirms the repository is below its hard cap of 5"
+    how: "Reuse the assigned existing checkout by default; never run git worktree add for routine dispatches. For an explicitly authorized worktree, use the installed shared guard."
+    merge: "Integrate sequentially through the repository's configured merge workflow after review and verification"
 
   branch:
     when: "Tasks share some files but edit different functions/sections"
@@ -176,8 +176,8 @@ For any set of tasks, produce:
 ### Wave 1 (Concurrent)
 | Agent | Task | Write Scope | Isolation |
 |-------|------|-------------|-----------|
-| A | Feature X | apps/users/ | worktree |
-| B | Feature Y tests | tests/ | worktree |
+| A | Feature X | apps/users/ | assigned checkout, branch |
+| B | Feature Y tests | tests/ | assigned checkout, file-scope |
 
 ### Wave 2 (After Wave 1 merges)
 | Agent | Task | Write Scope | Depends On |

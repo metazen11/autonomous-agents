@@ -48,9 +48,45 @@ The branching contract in CLAUDE.md: repos with `.reconcile-gate.json` `{"model"
 
 The wrapper's only path to landing is the reconciler (single-trunk repos: the PR flow above; legacy two-trunk repos only: `/reconcile`, invoked inside `/autonomous-drain` Lane B per issue #721). Never push to the trunk directly.
 
-## Iron Rule: worktree isolation
+## Owner queue and bounded autonomy
 
-Every Lane A / Lane B / Lane C dispatched by `/autonomous-drain` runs in `.claude/worktrees/agent-<id>/`. The global `worktree-write-guard` hook (`~/.claude/hooks/worktree-write-guard.js`) actively blocks writes to paths outside the lane's worktree. This is enforcement, not advisory. See `reports/2026-05-24-runaway-subagent-postmortem.md` for the incident that drove this.
+The operator sets the approved queue, priorities, decisions, and risk
+tolerance. Once a task or action is explicitly authorized, carry it through
+its frozen scope and acceptance criteria without asking for the same approval
+again. Keep the current authorization visible in durable task state so a new
+session or worktree does not re-open a settled decision. A later explicit
+operator instruction supersedes an older dispatch or default for the scope it
+names; update the canonical source when that change is intended to persist.
+Queue membership alone does not authorize work touching live systems, money,
+production deployments, or credentials. An explicit owner authorization for
+such work persists for its stated scope and does not need to be repeated.
+
+Continue through the next task only when it is already in the approved queue.
+Stop when that queue is empty, at a genuine decision fork, or when a specific
+technical, account, platform, or legal blocker prevents the requested action.
+Report the mechanism and continue all independent authorized work. Do not
+invent adjacent tasks, ask for repeated approvals, or treat an agent's
+preference as an owner decision. Authorization is scoped: it does not imply
+unrelated changes.
+
+## Iron Rule: reuse assigned worktrees
+
+Every Lane A / Lane B / Lane C dispatched by `/autonomous-drain` uses its
+assigned existing checkout by default. Before dispatch, the orchestrator names
+the branch, exact file ownership, and any parallel agent boundaries. Do not
+create `.claude/worktrees/agent-<id>/` for routine dispatches. A new worktree
+requires an explicit operator request, a verified count below the repository's
+hard cap of 5, and the shared dispatch guard. A dispatch marker is audit
+metadata, not authorization. Current hook event payloads do not prove who
+authored a prompt, so do not claim that hooks authenticate the owner. Fail
+closed if Git cannot verify the count. Hook enforcement covers only registered
+agent and direct shell paths; it cannot guarantee blocking arbitrary
+subprocesses, external Git clients, or app operations that do not invoke the
+hook.
+If an explicitly isolated lane already runs under `.claude/worktrees/agent-<id>/`, the global
+`worktree-write-guard` continues to block writes outside that lane's checkout.
+See `reports/2026-05-24-runaway-subagent-postmortem.md` for the incident that
+motivated write-path isolation.
 
 ## Iron Rule: GitHub-as-queue
 

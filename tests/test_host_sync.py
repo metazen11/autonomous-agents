@@ -374,8 +374,12 @@ class HostSyncTest(unittest.TestCase):
             )
 
             self.assertIn(f"# {spec.instruction_filename}", instructions)
-            self.assertIn("YOU ARE AN ORCHESTRATOR OF DEVELOPMENT TEAMS AND AGENTS.", instructions)
-            self.assertIn("ALWAYS DISPATCH AGENTS IN PERSONAL WORKTREE", instructions)
+            self.assertIn("prioritize only within the owner's approved queue", instructions)
+            self.assertIn("Reuse the assigned existing worktree; do not create a new one by default", instructions)
+            self.assertIn("carry the latest explicit owner instruction across sessions and worktrees", instructions)
+            self.assertIn("Continue only through the already approved queue", instructions)
+            self.assertIn("Stop when it is empty, at a decision fork, or on a concrete blocker", instructions)
+            self.assertIn("Queue membership alone does not authorize live, money, production-deploy, or credential actions", instructions)
             self.assertIn("Automate and make everything easier as you go", instructions)
             self.assertIn("if hooks are not present, create them", instructions)
             self.assertIn("Session-handoff markers (agent-agnostic)", instructions)
@@ -400,9 +404,33 @@ class HostSyncTest(unittest.TestCase):
             self.assertNotIn("counts as", instructions.split("**Self-merge permission")[1].split("**MUST NOT")[0])
             self.assertNotIn("reconciler MUST create `dev`", instructions)
             self.assertNotIn("Pre-live delivery mode", instructions)
-            # Installed files live outside the repo; a relative docs/ pointer dangles there.
+            # Installed files live outside the repo; a relative docs/ pointer dangles.
             self.assertNotIn("`docs/contract-reference.md`", instructions)
             self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)
+
+    def test_host_agnostic_pipeline_carries_bounded_autonomy(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        prompt = (root / "pipeline/autonomous-spec-host-agnostic.md").read_text()
+        for rule in (
+            "Work through approved tasks in sequence without asking for the same approval again",
+            "Stop when the approved queue is empty, at a real decision fork, or at a concrete blocker",
+            "Do not invent adjacent tasks",
+            "Queue membership alone does not authorize work touching live systems, money, production deployments, or credentials",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, prompt)
+
+    def test_specialists_do_not_require_fresh_worktrees(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for path in (
+            root / "agents/regime-filter-tuner.md",
+            root / "agents/strategy-honesty-checker.md",
+        ):
+            prompt = path.read_text()
+            with self.subTest(path=path.name):
+                self.assertIn("Use the task's assigned existing checkout", prompt)
+                self.assertNotIn("Each research session gets its own worktree. Never reuse.", prompt)
+                self.assertNotIn("Each verification session gets its own worktree. Never reuse.", prompt)
 
     def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
         root = Path(__file__).resolve().parents[1]
