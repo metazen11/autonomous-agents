@@ -142,6 +142,8 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "skills" / "extra" / "skill.md").write_text("extra skill\n")
             (repo_root / "skills" / "reconcile").mkdir(parents=True)
             (repo_root / "skills" / "reconcile" / "skill.md").write_text("reuse existing checkout\n")
+            (repo_root / "skills" / "reconcile" / "scripts").mkdir()
+            (repo_root / "skills" / "reconcile" / "scripts" / "reconcile_lock.sh").write_text("#!/bin/sh\n")
             (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
             (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
@@ -163,9 +165,11 @@ class HostSyncTest(unittest.TestCase):
                 (target.skill_path.parent.parent / "reconcile" / "skill.md").read_text(),
                 "reuse existing checkout\n",
             )
+            self.assertTrue((target.skill_path.parent.parent / "reconcile/scripts/reconcile_lock.sh").is_file())
             status = check_target(repo_root, target)
         self.assertTrue(status.skill_in_sync)
         self.assertEqual(status.missing_agents, [])
+        self.assertEqual(status.missing_skill_files, [])
         self.assertTrue(status.instructions_in_sync)
         self.assertTrue(status.config_snippet_in_sync)
 
@@ -561,6 +565,158 @@ class HostSyncTest(unittest.TestCase):
             self.assertTrue(status.instructions_in_sync)
             self.assertTrue(status.config_snippet_in_sync)
 
+    def test_installed_reconcile_helper_runs_from_a_different_target_repository(self) -> None:
+        pack_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "pack"
+            (source / "pipeline").mkdir(parents=True)
+            (source / "agents").mkdir()
+            (source / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\n")
+            (source / "pipeline/autonomous.md").write_text("skill content\n")
+            reconcile = source / "skills/reconcile"
+            (reconcile / "scripts").mkdir(parents=True)
+            (reconcile / "skill.md").write_text("bundled lock helper\n")
+            for name in ("reconcile_lock.sh", "reconcile_lock.py"):
+                (reconcile / "scripts" / name).write_bytes(
+                    (pack_root / "skills/reconcile/scripts" / name).read_bytes()
+                )
+            target_home = root / "installed"
+            target = HostTarget(
+                name="codex",
+                skill_path=target_home / "skills/autonomous/skill.md",
+                agents_dir=target_home / "agents",
+            )
+
+            sync_target(source, target)
+            helper = target_home / "skills/reconcile/scripts/reconcile_lock.sh"
+            self.assertEqual(check_target(source, target).missing_skill_files, [])
+
+            other_repo = root / "other-repo"
+            other_repo.mkdir()
+            subprocess.run(["git", "init", "-b", "work/reconcile-helper-test"], cwd=other_repo, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=other_repo, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=other_repo, check=True)
+            (other_repo / "README.md").write_text("fixture\n")
+            subprocess.run(["git", "add", "README.md"], cwd=other_repo, check=True)
+            subprocess.run(["git", "commit", "-m", "fixture"], cwd=other_repo, check=True, capture_output=True)
+
+            acquired = subprocess.run(
+                [str(helper), "acquire", "fixture-task", str(other_repo), "work/reconcile-helper-test"],
+                cwd=other_repo, check=True, capture_output=True, text=True,
+            )
+            self.assertIn("LOCK ACQUIRED", acquired.stdout)
+            released = subprocess.run(
+                [str(helper), "release", "fixture-task", str(other_repo), "work/reconcile-helper-test"],
+                cwd=other_repo, check=True, capture_output=True, text=True,
+            )
+            self.assertIn("LOCK RELEASED", released.stdout)
+
+    def test_sync_skips_when_bundled_helper_destination_is_git_tracked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "pack"
+            (source / "pipeline").mkdir(parents=True)
+            (source / "agents").mkdir()
+            (source / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Contract\n")
+            (source / "pipeline/autonomous.md").write_text("skill content\n")
+            reconcile = source / "skills/reconcile"
+            (reconcile / "scripts").mkdir(parents=True)
+            (reconcile / "skill.md").write_text("reconcile\n")
+            (reconcile / "scripts/reconcile_lock.py").write_text("canonical helper\n")
+
+            target_repo = root / "target-repo"
+            target_repo.mkdir()
+            support = target_repo / "skills/reconcile/scripts/reconcile_lock.py"
+            support.parent.mkdir(parents=True)
+            support.write_text("target-owned helper\n")
+            subprocess.run(["git", "init", "-q", "-b", "work/target"], cwd=target_repo, check=True)
+            subprocess.run(["git", "add", "skills/reconcile/scripts/reconcile_lock.py"], cwd=target_repo, check=True)
+            subprocess.run(
+                ["git", "-c", "user.email=test@example.invalid", "-c", "user.name=Test", "commit", "-q", "-m", "target helper"],
+                cwd=target_repo, check=True,
+            )
+            target = HostTarget(
+                name="codex",
+                skill_path=target_repo / "skills/autonomous/skill.md",
+                agents_dir=target_repo / "agents",
+            )
+
+            self.assertFalse(sync_target(source, target))
+            self.assertEqual(support.read_text(), "target-owned helper\n")
+            self.assertFalse(target.skill_path.exists())
+
+    def test_sync_rejects_bundled_helper_symlink_before_any_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "pack"
+            (source / "pipeline").mkdir(parents=True)
+            (source / "agents").mkdir()
+            (source / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Contract\n")
+            (source / "pipeline/autonomous.md").write_text("skill content\n")
+            reconcile = source / "skills/reconcile"
+            (reconcile / "scripts").mkdir(parents=True)
+            (reconcile / "skill.md").write_text("reconcile\n")
+            (reconcile / "scripts/reconcile_lock.py").write_text("canonical helper\n")
+
+            host = root / "host"
+            installed = host / "skills/reconcile/scripts"
+            installed.mkdir(parents=True)
+            outside = root / "outside.py"
+            outside.write_text("preserve\n")
+            (installed / "reconcile_lock.py").symlink_to(outside)
+            target = HostTarget(
+                name="codex",
+                skill_path=host / "skills/autonomous/skill.md",
+                agents_dir=host / "agents",
+            )
+
+            with self.assertRaisesRegex(ValueError, "non-regular destination"):
+                sync_target(source, target)
+            self.assertEqual(outside.read_text(), "preserve\n")
+            self.assertFalse(target.skill_path.exists())
+            self.assertFalse(target.agents_dir.exists())
+
+    def test_sync_rejects_bundled_helper_parent_symlink_before_any_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "pack"
+            (source / "pipeline").mkdir(parents=True)
+            (source / "agents").mkdir()
+            (source / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Contract\n")
+            (source / "pipeline/autonomous.md").write_text("skill content\n")
+            reconcile = source / "skills/reconcile"
+            (reconcile / "scripts").mkdir(parents=True)
+            (reconcile / "skill.md").write_text("reconcile\n")
+            (reconcile / "scripts/reconcile_lock.py").write_text("canonical helper\n")
+
+            host = root / "host"
+            skill_root = host / "skills"
+            (skill_root / "reconcile").mkdir(parents=True)
+            outside_dir = root / "outside"
+            outside_dir.mkdir()
+            (outside_dir / "reconcile_lock.py").write_text("canonical helper\n")
+            (skill_root / "reconcile/scripts").symlink_to(outside_dir, target_is_directory=True)
+            target = HostTarget(
+                name="codex",
+                skill_path=Path("host/skills/autonomous/skill.md"),
+                agents_dir=Path("host/agents"),
+            )
+
+            previous_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                self.assertEqual(
+                    check_target(source, target).missing_skill_files,
+                    ["reconcile/scripts/reconcile_lock.py"],
+                )
+                with self.assertRaisesRegex(ValueError, "unsafe parent"):
+                    sync_target(source, target)
+                self.assertFalse(target.skill_path.exists())
+                self.assertFalse(target.agents_dir.exists())
+            finally:
+                os.chdir(previous_cwd)
+
     def test_feature_report_includes_primary_hosts(self) -> None:
         report = feature_report()
         self.assertIn("claude:", report)
@@ -645,21 +801,23 @@ class HostSyncTest(unittest.TestCase):
         self.assertIn("Do not automatically run `git worktree add`", prompt)
         self.assertIn("explicit owner request", prompt)
         self.assertIn("hard cap of five", prompt)
-        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", prompt)
-        self.assertIn("scripts/reconcile_lock.sh release <task-id> <assigned-checkout> <assigned-branch>", prompt)
+        self.assertIn("bundled `scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>`", prompt)
+        self.assertIn("bundled helper using `scripts/reconcile_lock.sh release <task-id> <assigned-checkout> <assigned-branch>`", prompt)
         self.assertIn("does not authenticate the prompt author", prompt)
         self.assertIn("The originating issue or dispatch must name the exact checkout and working branch", prompt)
         self.assertIn("If the assigned checkout is dirty, ownership is unclear", prompt)
         autonomous = (root / "pipeline/autonomous.md").read_text()
         self.assertIn("Reconcile checkout and lock assigned", autonomous)
-        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", autonomous)
+        self.assertIn("bundled `scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>`", autonomous)
         self.assertTrue((root / "scripts/reconcile_lock.sh").is_file())
 
     def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
         root = Path(__file__).resolve().parents[1]
         for sub in ("agents", "pipeline", "docs"):
             for f in (root / sub).rglob("*.md"):
-                if "superpowers" in f.parts:
+                # Dispatches are dated audit records and may name the then-current
+                # integration ref; this guard applies to reusable agent guidance.
+                if "superpowers" in f.parts or (sub == "docs" and "dispatches" in f.parts):
                     continue
                 self.assertNotIn("origin/dev", f.read_text(), str(f))
 

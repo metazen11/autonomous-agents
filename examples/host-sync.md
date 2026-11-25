@@ -22,6 +22,12 @@ What gets synced for the primary hosts:
 - Gemini: `skill.md`, `agents/*.md`, `GEMINI.md`, optional MCP snippet
 - Anvil: pipeline prompt, core agents, curated agent bundles, schemas, scripts, `AGENTS.md`
 
+Skill support files under each `skills/<name>/` directory are installed beside
+that skill and checked for drift. The `/reconcile` skill bundles its lock
+helper there so it can run with another repository as the working directory;
+`sync` refuses tracked, symlinked, or non-file helper destinations before it
+writes any host files.
+
 For Codex, source sync also enforces the `host_agents.json` bench selection for
 legacy same-name TOML profiles. A benched canonical source named
 `regime-filter-tuner.md` owns the legacy `regime-filter-tuner.toml` filename:

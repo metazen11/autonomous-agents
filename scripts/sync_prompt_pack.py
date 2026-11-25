@@ -202,6 +202,9 @@ def main() -> int:
         agents_status = "ok" if not status.missing_agents else ",".join(status.missing_agents)
         schemas_status = "n/a" if status.missing_schemas is None else ("ok" if not status.missing_schemas else ",".join(status.missing_schemas))
         scripts_status = "n/a" if status.missing_scripts is None else ("ok" if not status.missing_scripts else ",".join(status.missing_scripts))
+        skill_files_status = "n/a" if status.missing_skill_files is None else (
+            "ok" if not status.missing_skill_files else ",".join(status.missing_skill_files)
+        )
         skill_status = format_status(status.skill_in_sync)
         instructions_status = format_status(status.instructions_in_sync)
         config_status = format_status(status.config_snippet_in_sync)
@@ -211,7 +214,7 @@ def main() -> int:
         print(
             f"{target.name}: skill={skill_status} instructions={instructions_status} "
             f"config={config_status} agents={agents_status} bench={bench_status} "
-            f"schemas={schemas_status} scripts={scripts_status}"
+            f"schemas={schemas_status} scripts={scripts_status} skill_files={skill_files_status}"
         )
         if (
             status.skill_in_sync is False
@@ -221,6 +224,7 @@ def main() -> int:
             or status.bench_problems
             or status.missing_schemas
             or status.missing_scripts
+            or status.missing_skill_files
         ):
             failed = True
     return 1 if failed else 0

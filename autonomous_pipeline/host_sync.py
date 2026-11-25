@@ -96,6 +96,7 @@ class SyncStatus:
     missing_agents: list[str] | None = None
     missing_schemas: list[str] | None = None
     missing_scripts: list[str] | None = None
+    missing_skill_files: list[str] | None = None
     bench: list[str] | None = None
     bench_problems: list[str] | None = None
 
@@ -432,6 +433,17 @@ def repo_schema_sources(repo_root: Path) -> list[Path]:
     return sorted(schemas_dir.glob("*.json"))
 
 
+def repo_skill_file_sources(repo_root: Path) -> list[Path]:
+    """Return non-Markdown support files bundled with installable skills."""
+    skills_dir = repo_root / "skills"
+    if not skills_dir.is_dir():
+        return []
+    return sorted(
+        path for path in skills_dir.rglob("*")
+        if path.is_file() and path.name != "skill.md"
+    )
+
+
 # Scripts that should be synced to host targets (validation tools, not repo-internal tooling).
 _SYNCABLE_SCRIPTS = ("validate_quality_gate.py",)
 
@@ -510,8 +522,9 @@ def _path_is_in_git_worktree(path: Path) -> bool:
     Behind the "sync must not write into git-tracked destinations" rule.
     Regression: [[project_opt_anvil_overlay_recurrence]].
     """
-    probe = path if path.exists() else next(
-        (parent for parent in path.parents if parent.exists()), None
+    probe = next(
+        (candidate for candidate in (path, *path.parents) if candidate.is_dir()),
+        None,
     )
     if probe is None:
         return False
@@ -568,7 +581,17 @@ def _path_is_in_git_worktree(path: Path) -> bool:
     return subtree_result.returncode == 0 and bool(subtree_result.stdout.strip())
 
 
-def _target_is_git_managed(target: HostTarget) -> bool:
+def _skill_file_destinations(repo_root: Path, target: HostTarget) -> list[Path]:
+    if target.skill_path is None:
+        return []
+    skill_root = target.skill_path.parent.parent
+    return [
+        skill_root / source.relative_to(repo_root / "skills")
+        for source in repo_skill_file_sources(repo_root)
+    ]
+
+
+def _target_is_git_managed(target: HostTarget, repo_root: Path | None = None) -> bool:
     """Return True if any of *target*'s configured paths lives in a git worktree."""
     candidates = [
         target.skill_path,
@@ -578,7 +601,37 @@ def _target_is_git_managed(target: HostTarget) -> bool:
         target.schemas_dir,
         target.scripts_dir,
     ]
+    if repo_root is not None:
+        candidates.extend(_skill_file_destinations(repo_root, target))
     return any(p is not None and _path_is_in_git_worktree(p) for p in candidates)
+
+
+def _skill_file_destination_problem(destination: Path, skill_root: Path) -> Path | None:
+    """Return the first unsafe support-file path component, if any."""
+    root = Path(os.path.abspath(skill_root))
+    destination = Path(os.path.abspath(destination))
+    if os.path.lexists(root) and (root.is_symlink() or not root.is_dir()):
+        return root
+    current = destination.parent
+    while current != root and root in current.parents:
+        if os.path.lexists(current) and (current.is_symlink() or not current.is_dir()):
+            return current
+        current = current.parent
+    if os.path.lexists(destination) and (destination.is_symlink() or not destination.is_file()):
+        return destination
+    return None
+
+
+def _preflight_skill_file_destinations(destinations: Sequence[Path], skill_root: Path) -> None:
+    """Refuse unsafe support-file paths before sync writes any host files."""
+    for destination in destinations:
+        problem = _skill_file_destination_problem(destination, skill_root)
+        if problem is not None:
+            if problem == Path(os.path.abspath(skill_root)):
+                raise ValueError(f"cannot install skill support file into unsafe skill directory: {problem}")
+            if problem == Path(os.path.abspath(destination)):
+                raise ValueError(f"cannot install skill support file over non-regular destination: {problem}")
+            raise ValueError(f"cannot install skill support file through unsafe parent: {problem}")
 
 
 def sync_target(repo_root: Path, target: HostTarget) -> bool:
@@ -600,7 +653,7 @@ def _sync_target_unlocked(repo_root: Path, target: HostTarget) -> bool:
     warning and returns False so the caller can distinguish "no-op skip"
     from "wrote files."
     """
-    if _target_is_git_managed(target):
+    if _target_is_git_managed(target, repo_root):
         # Git-managed host targets (e.g. ANVIL_* pointing at /opt/anvil, which
         # is a git checkout with tracked prompt-pack files) MUST update their
         # prompt-pack files via their own repo's release flow, not via this
@@ -611,6 +664,10 @@ def _sync_target_unlocked(repo_root: Path, target: HostTarget) -> bool:
             f"files. That repo owns them; update via its own release flow.",
         )
         return False
+
+    skill_destinations = _skill_file_destinations(repo_root, target)
+    if target.skill_path:
+        _preflight_skill_file_destinations(skill_destinations, target.skill_path.parent.parent)
 
     # Validate every legacy profile before creating directories or writing any
     # other target files. A conflict must leave the entire sync untouched.
@@ -629,6 +686,11 @@ def _sync_target_unlocked(repo_root: Path, target: HostTarget) -> bool:
             dest = target.skill_path.parent.parent / source.parent.name / "skill.md"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(source.read_text())
+        for source, dest in zip(repo_skill_file_sources(repo_root), skill_destinations, strict=True):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(source.read_bytes())
+            if source.suffix == ".sh":
+                dest.chmod(0o755)
         _sync_agents_dir_unlocked(repo_root, target.agents_dir, target.name)
 
     if target.schemas_dir:
@@ -746,6 +808,17 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             if not target_file.exists() or sha256_file(source) != sha256_file(target_file):
                 missing_scripts.append(source.name)
 
+    missing_skill_files: list[str] | None = None
+    if target.skill_path:
+        missing_skill_files = []
+        skill_root = target.skill_path.parent.parent
+        for source in repo_skill_file_sources(repo_root):
+            relative = source.relative_to(repo_root / "skills")
+            target_file = skill_root / relative
+            unsafe_path = _skill_file_destination_problem(target_file, skill_root)
+            if unsafe_path is not None or not target_file.is_file() or sha256_file(source) != sha256_file(target_file):
+                missing_skill_files.append(relative.as_posix())
+
     return SyncStatus(
         host=target.name,
         configured=True,
@@ -755,6 +828,7 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
         missing_agents=missing_agents,
         missing_schemas=missing_schemas,
         missing_scripts=missing_scripts,
+        missing_skill_files=missing_skill_files,
         bench=bench,
         bench_problems=bench_problems,
     )
