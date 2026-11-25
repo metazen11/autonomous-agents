@@ -302,6 +302,7 @@ Required evidence categories:
 ### 8. REPORT
 
 - Update the task source with outcome, artifact links, and blockers.
+- For cross-agent, cross-machine, or cross-checkout artifacts, write the artifact to the receiving project's documented inbox/reports path and link it from the task or dispatch; chat-only delivery is not durable. When the Ziggy/Muse protocol applies, append timestamp, direction, path, byte count, content hash, purpose, and verifier to `ziggy/LEDGER.md`.
 - Persist durable learnings to the memory layer if available.
 - Save resumable run state.
 

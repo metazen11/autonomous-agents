@@ -69,6 +69,16 @@ invent adjacent tasks, ask for repeated approvals, or treat an agent's
 preference as an owner decision. Authorization is scoped: it does not imply
 unrelated changes.
 
+## Durable cross-agent handoffs
+
+When work crosses agents, machines, or repository checkouts, save the artifact
+in the receiving project's documented inbox or reports path and link it from
+the task or dispatch. Chat alone is not a durable handoff. When using the
+Ziggy/Muse exchange, append a row to `ziggy/LEDGER.md` with timestamp,
+direction, path, byte count, content hash, purpose, and verifier. Keep project-
+specific paths conditional; do not invent an inbox or ledger for projects that
+do not define one.
+
 ## Iron Rule: reuse assigned worktrees
 
 Every Lane A / Lane B / Lane C dispatched by `/autonomous-drain` uses its

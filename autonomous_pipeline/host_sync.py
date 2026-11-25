@@ -1012,6 +1012,7 @@ def render_host_instructions(repo_root: Path, target: HostTarget) -> str:
         f"- Session start: discover skills and invoke the matching workflow skill. {_HOST_NOTES.get(target.name, '')}".rstrip(),
         "- Read README, `.autonomous.json`, `todo.json` and project/nested `CLAUDE.md`/`AGENTS.md`/`GEMINI.md`; they override this file where they define branching, QA or deploy. Durable guidance in instruction files; ephemeral status in `HANDOFF.md`/tracker.",
         "- Session-handoff markers (agent-agnostic): process `plans/session-handoff/*` (not `processed/`) first: land or keep each branch, move the marker to `processed/`; older than 7 days: open an issue, ping a human.",
+        "- Durable cross-agent handoffs: save artifacts to the receiving project's documented inbox/reports path and link them from the task or dispatch; chat alone is not durable. When the Ziggy/Muse protocol applies, append timestamp, direction, path, byte count, content hash, purpose, and verifier to the append-only `ziggy/LEDGER.md`; do not invent project paths.",
         "",
         "## Operating model §OM",
         "- Tasks: `todo.json` + GitHub Issues; lessons to agentMemory. Every issue has acceptance criteria; done needs an auditor and (UI) a QA agent.",
