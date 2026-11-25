@@ -134,6 +134,8 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
             (repo_root / "skills" / "extra").mkdir(parents=True)
             (repo_root / "skills" / "extra" / "skill.md").write_text("extra skill\n")
+            (repo_root / "skills" / "reconcile").mkdir(parents=True)
+            (repo_root / "skills" / "reconcile" / "skill.md").write_text("reuse existing checkout\n")
             (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
             (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
@@ -151,6 +153,10 @@ class HostSyncTest(unittest.TestCase):
             result = sync_target(repo_root, target)
             self.assertTrue(result, "sync_target should return True for a plain target")
             self.assertEqual((target.skill_path.parent.parent / "extra" / "skill.md").read_text(), "extra skill\n")
+            self.assertEqual(
+                (target.skill_path.parent.parent / "reconcile" / "skill.md").read_text(),
+                "reuse existing checkout\n",
+            )
             status = check_target(repo_root, target)
         self.assertTrue(status.skill_in_sync)
         self.assertEqual(status.missing_agents, [])
@@ -434,6 +440,22 @@ class HostSyncTest(unittest.TestCase):
                 self.assertIn("Use the task's assigned existing checkout", prompt)
                 self.assertNotIn("Each research session gets its own worktree. Never reuse.", prompt)
                 self.assertNotIn("Each verification session gets its own worktree. Never reuse.", prompt)
+
+    def test_reconcile_skill_never_creates_a_worktree_by_default(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        prompt = (root / "skills/reconcile/skill.md").read_text()
+        self.assertIn("Do not automatically run `git worktree add`", prompt)
+        self.assertIn("explicit owner request", prompt)
+        self.assertIn("hard cap of five", prompt)
+        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", prompt)
+        self.assertIn("scripts/reconcile_lock.sh release <task-id> <assigned-checkout> <assigned-branch>", prompt)
+        self.assertIn("does not authenticate the prompt author", prompt)
+        self.assertIn("The originating issue or dispatch must name the exact checkout and working branch", prompt)
+        self.assertIn("If the assigned checkout is dirty, ownership is unclear", prompt)
+        autonomous = (root / "pipeline/autonomous.md").read_text()
+        self.assertIn("Reconcile checkout and lock assigned", autonomous)
+        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", autonomous)
+        self.assertTrue((root / "scripts/reconcile_lock.sh").is_file())
 
     def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
         root = Path(__file__).resolve().parents[1]
