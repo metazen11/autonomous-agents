@@ -117,6 +117,74 @@ class ReconcileLockTest(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertEqual((lock / "owner.json").read_text(encoding="utf-8"), "not json\n")
 
+    def test_non_utf8_lock_owner_fails_closed_without_traceback(self) -> None:
+        lock = self.lock_path()
+        lock.mkdir(mode=0o700)
+        owner_path = lock / "owner.json"
+        owner_path.write_bytes(b"\xff\xfe\n")
+
+        released = self.release("GH-29")
+
+        self.assertNotEqual(released.returncode, 0)
+        self.assertIn("unknown or malformed", released.stderr)
+        self.assertNotIn("Traceback", released.stderr)
+        self.assertEqual(owner_path.read_bytes(), b"\xff\xfe\n")
+
+    def test_release_refuses_symlinked_lock_directory_without_touching_target(self) -> None:
+        lock = self.lock_path()
+        outside = Path(self.temp.name) / "outside-lock"
+        outside.mkdir()
+        owner_path = outside / "owner.json"
+        owner_path.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": "GH-29",
+                    "branch": "feature/test",
+                    "checkout": str(self.repo.resolve()),
+                    "host": "test-host",
+                    "pid": 123,
+                    "created_at": "2026-11-25T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+        lock.symlink_to(outside, target_is_directory=True)
+
+        released = self.release("GH-29")
+
+        self.assertNotEqual(released.returncode, 0)
+        self.assertIn("not a real directory", released.stderr)
+        self.assertTrue(lock.is_symlink())
+        self.assertTrue(owner_path.is_file())
+
+    def test_release_refuses_symlinked_owner_without_touching_target(self) -> None:
+        lock = self.lock_path()
+        lock.mkdir(mode=0o700)
+        outside_owner = Path(self.temp.name) / "outside-owner.json"
+        outside_owner.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": "GH-29",
+                    "branch": "feature/test",
+                    "checkout": str(self.repo.resolve()),
+                    "host": "test-host",
+                    "pid": 123,
+                    "created_at": "2026-11-25T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (lock / "owner.json").symlink_to(outside_owner)
+
+        released = self.release("GH-29")
+
+        self.assertNotEqual(released.returncode, 0)
+        self.assertIn("unknown or malformed", released.stderr)
+        self.assertEqual(outside_owner.read_text(encoding="utf-8").count("GH-29"), 1)
+        self.assertTrue((lock / "owner.json").is_symlink())
+
     def test_stale_and_unknown_host_locks_are_not_cleared_automatically(self) -> None:
         acquired = self.acquire("GH-29")
         self.assertEqual(acquired.returncode, 0, acquired.stderr)

@@ -124,7 +124,7 @@ Every host should assign explicit operational responsibilities before invoking s
 ## Repo Management Rules
 
 - Only the orchestrator should own the final integration branch by default.
-- Worker agents use the assigned existing checkout by default. Coordinate explicit, non-overlapping file ownership for parallel work; do not create a worktree just to dispatch an agent. A new worktree requires an explicit owner request and a verified count below the repository cap of five.
+- Worker agents use the assigned existing checkout by default. Coordinate explicit, non-overlapping file ownership for parallel work; do not create a worktree just to dispatch an agent. A new worktree requires an explicit owner request, fewer than five total registered worktrees including primary, no dirty or unlanded non-primary worktree, and a successful shared guard check against current remote policy. If count, policy, or landing state is uncertain, inspect it read-only and preserve all dirty or unmerged work; do not invoke `/reconcile` until the target checkout is clean and the current branch policy is verified. For clean unlanded work, single-trunk repositories use a feature-branch squash PR to production; legacy two-trunk repositories use `/reconcile` to the unique verified `dev`/`develop`. Never delete dirty or unmerged work.
 - No agent may commit unless its contract explicitly grants commit authority.
 - By default, only the orchestrator creates the final commit and pull request.
 - Every write-capable agent must declare `allowed_write_scope`.

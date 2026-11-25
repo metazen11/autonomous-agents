@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -59,11 +60,36 @@ def _git_paths(cwd: Path) -> tuple[Path, Path]:
     return root, common
 
 
-def _read_owner(lock_dir: Path) -> dict[str, Any]:
-    owner_path = lock_dir / OWNER_FILE
+def _open_lock_dir(lock_dir: Path) -> int:
+    """Open a real lock directory without following a substituted symlink."""
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        raise LockError("This platform cannot safely open reconcile lock paths")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
-        owner = json.loads(owner_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        fd = os.open(lock_dir, flags)
+    except OSError as exc:
+        raise LockError(f"Lock path is unavailable or is not a real directory: {lock_dir}") from exc
+    if not stat.S_ISDIR(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise LockError(f"Lock path is not a real directory: {lock_dir}")
+    return fd
+
+
+def _read_owner_from_fd(lock_fd: int, lock_dir: Path) -> dict[str, Any]:
+    owner_path = lock_dir / OWNER_FILE
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise LockError("This platform cannot safely open reconcile owner paths")
+    try:
+        owner_fd = os.open(
+            OWNER_FILE,
+            os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=lock_fd,
+        )
+        with os.fdopen(owner_fd, "r", encoding="utf-8") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise LockError(f"Lock owner is not a regular file: {owner_path}")
+            owner = json.load(stream)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise LockError(f"Lock state is unknown or malformed at {owner_path}") from exc
     if not isinstance(owner, dict) or not REQUIRED_FIELDS.issubset(owner):
         raise LockError(f"Lock state is unknown or malformed at {owner_path}")
@@ -73,6 +99,14 @@ def _read_owner(lock_dir: Path) -> dict[str, Any]:
     ) or not isinstance(owner.get("pid"), int) or isinstance(owner.get("pid"), bool):
         raise LockError(f"Lock state is unknown or malformed at {owner_path}")
     return owner
+
+
+def _read_owner(lock_dir: Path) -> dict[str, Any]:
+    lock_fd = _open_lock_dir(lock_dir)
+    try:
+        return _read_owner_from_fd(lock_fd, lock_dir)
+    finally:
+        os.close(lock_fd)
 
 
 def _status(common: Path) -> int:
@@ -166,23 +200,29 @@ def release(task_id: str, expected_checkout: str, expected_branch: str, cwd: Pat
         return 2
     lock_dir = common / LOCK_NAME
     try:
-        owner = _read_owner(lock_dir)
+        lock_fd = _open_lock_dir(lock_dir)
     except LockError as exc:
         print(f"Cannot release reconcile lock: {exc}", file=sys.stderr)
         return 2
-    if (owner["task_id"], owner["checkout"], owner["branch"]) != (task_id, str(root), branch):
-        print("Cannot release reconcile lock: task, checkout, or branch does not match the recorded owner.", file=sys.stderr)
-        return 1
     try:
-        entries = {entry.name for entry in lock_dir.iterdir()}
+        owner = _read_owner_from_fd(lock_fd, lock_dir)
+        if (owner["task_id"], owner["checkout"], owner["branch"]) != (task_id, str(root), branch):
+            print("Cannot release reconcile lock: task, checkout, or branch does not match the recorded owner.", file=sys.stderr)
+            return 1
+        entries = set(os.listdir(lock_fd))
         if entries != {OWNER_FILE}:
             print("Cannot release reconcile lock: unexpected lock contents; state preserved.", file=sys.stderr)
             return 2
-        (lock_dir / OWNER_FILE).unlink()
+        os.unlink(OWNER_FILE, dir_fd=lock_fd)
         lock_dir.rmdir()
     except OSError as exc:
         print(f"Cannot release reconcile lock safely: {exc}", file=sys.stderr)
         return 2
+    except LockError as exc:
+        print(f"Cannot release reconcile lock safely: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        os.close(lock_fd)
     print("LOCK RELEASED")
     return 0
 

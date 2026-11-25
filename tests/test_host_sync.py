@@ -759,6 +759,11 @@ class HostSyncTest(unittest.TestCase):
             self.assertNotIn("permissions.admin", instructions)
             self.assertIn("--match-head-commit", instructions)
             self.assertIn("An unprotected trunk is human-gated", instructions)
+            self.assertIn("fewer than five total registered worktrees including primary", instructions)
+            self.assertIn("verify origin policy read-only", instructions)
+            self.assertIn("single-trunk repositories land through a feature-branch squash PR", instructions)
+            self.assertIn("legacy two-trunk repositories use `/reconcile` to the unique verified `dev`/`develop`", instructions)
+            self.assertNotIn("unlanded agent worktrees are capped per repo", instructions)
             rule = instructions[instructions.index("**Self-merge permission"):].split("\n")[0]
             self.assertIn("agent-gate", rule)
             self.assertIn(".github/rulesets/**", instructions)

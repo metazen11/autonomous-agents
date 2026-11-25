@@ -76,13 +76,15 @@ assigned existing checkout by default. Before dispatch, the orchestrator names
 the branch, exact file ownership, and any parallel agent boundaries. Do not
 create `.claude/worktrees/agent-<id>/` for routine dispatches. A new worktree
 requires an explicit operator request, a verified count below the repository's
-hard cap of 5, and the shared dispatch guard. A dispatch marker is audit
-metadata, not authorization. Current hook event payloads do not prove who
-authored a prompt, so do not claim that hooks authenticate the owner. Fail
-closed if Git cannot verify the count. Hook enforcement covers only registered
-agent and direct shell paths; it cannot guarantee blocking arbitrary
-subprocesses, external Git clients, or app operations that do not invoke the
-hook.
+hard cap of 5, no dirty or unlanded non-primary worktree, and the shared
+dispatch guard. The guard counts every registered worktree including primary
+and verifies the authorized integration trunk against current origin state. A
+dispatch marker is audit metadata, not authorization. Current hook event
+payloads do not prove who authored a prompt, so do not claim that hooks
+authenticate the owner. Fail closed when Git, policy, or remote state cannot be
+verified. Hook enforcement covers only registered agent and direct shell paths;
+it cannot guarantee blocking arbitrary subprocesses, external Git clients, or
+app operations that do not invoke the hook.
 If an explicitly isolated lane already runs under `.claude/worktrees/agent-<id>/`, the global
 `worktree-write-guard` continues to block writes outside that lane's checkout.
 See `reports/2026-05-24-runaway-subagent-postmortem.md` for the incident that
