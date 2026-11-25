@@ -749,6 +749,7 @@ class HostSyncTest(unittest.TestCase):
             self.assertIn("Durable cross-agent handoffs", instructions)
             self.assertIn("append-only `ziggy/LEDGER.md`", instructions)
             self.assertIn("chat alone is not durable", instructions)
+            self.assertIn("do not invent project paths", instructions)
             self.assertIn("Git distribution source: `https://github.com/metazen11/autonomous-agents.git`", instructions)
             self.assertIn("Prompt pack source: `~/_CODING/autonomous_agents_mds/`", instructions)
             self.assertIn("Prompt pack sync: `cd ~/_CODING/autonomous_agents_mds", instructions)
