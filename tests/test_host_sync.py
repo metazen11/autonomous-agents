@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from autonomous_pipeline.host_sync import (
     HOST_SPECS,
     HostTarget,
+    _host_sync_lock,
+    _host_sync_lock_available,
     anacron_line,
     check_target,
     cron_line,
@@ -162,6 +168,198 @@ class HostSyncTest(unittest.TestCase):
         self.assertEqual(status.missing_agents, [])
         self.assertTrue(status.instructions_in_sync)
         self.assertTrue(status.config_snippet_in_sync)
+
+    def test_benched_legacy_toml_moves_byte_for_byte_and_unrelated_profiles_stay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            active = Path(tmpdir) / "host/agents"
+            active.mkdir(parents=True)
+            legacy_bytes = b"# legacy profile\r\n[model]\r\nname = 'old'\x00\xff"
+            (active / "quiet-agent.toml").write_bytes(legacy_bytes)
+            unrelated_bytes = b"[model]\nname = 'keep'\n"
+            (active / "unrelated.toml").write_bytes(unrelated_bytes)
+
+            sync_agents_dir(root, active, "codex")
+
+            self.assertFalse((active / "quiet-agent.toml").exists())
+            self.assertEqual((Path(tmpdir) / "host/agents-bench/quiet-agent.toml").read_bytes(), legacy_bytes)
+            self.assertEqual((active / "unrelated.toml").read_bytes(), unrelated_bytes)
+
+    def test_check_reports_active_legacy_toml_and_sync_conflict_is_preflighted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "pipeline").mkdir()
+            (root / "pipeline/autonomous.md").write_text("new skill\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            host = Path(tmpdir) / "host"
+            agents = host / "agents"
+            agents.mkdir(parents=True)
+            active_toml = agents / "quiet-agent.toml"
+            active_toml.write_text("legacy")
+            destination = host / "agents-bench/quiet-agent.toml"
+            destination.parent.mkdir()
+            destination.write_text("collision")
+            skill = host / "skill.md"
+            skill.write_text("preserve")
+            target = HostTarget(name="codex", agents_dir=agents, skill_path=skill)
+
+            status = check_target(root, target)
+            self.assertIn("quiet-agent.toml(active)", status.bench_problems)
+            with self.assertRaisesRegex(ValueError, "destination already exists"):
+                sync_target(root, target)
+            self.assertEqual(skill.read_text(), "preserve")
+            self.assertEqual(active_toml.read_text(), "legacy")
+            self.assertEqual(destination.read_text(), "collision")
+
+    def test_benched_legacy_toml_symlink_fails_before_other_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "pipeline").mkdir()
+            (root / "pipeline/autonomous.md").write_text("new skill\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            host = Path(tmpdir) / "host"
+            agents = host / "agents"
+            agents.mkdir(parents=True)
+            outside = Path(tmpdir) / "outside.toml"
+            outside.write_text("preserve")
+            (agents / "quiet-agent.toml").symlink_to(outside)
+            skill = host / "skill.md"
+            skill.write_text("preserve")
+
+            with self.assertRaisesRegex(ValueError, "regular file"):
+                sync_target(root, HostTarget(name="codex", agents_dir=agents, skill_path=skill))
+            self.assertEqual(skill.read_text(), "preserve")
+            self.assertTrue((agents / "quiet-agent.toml").is_symlink())
+            self.assertEqual(outside.read_text(), "preserve")
+
+    def test_benched_legacy_toml_directory_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            agents = Path(tmpdir) / "host/agents"
+            (agents / "quiet-agent.toml").mkdir(parents=True)
+
+            with self.assertRaisesRegex(ValueError, "regular file"):
+                sync_agents_dir(root, agents, "codex")
+            self.assertTrue((agents / "quiet-agent.toml").is_dir())
+
+    def test_benched_legacy_tomls_reject_symlink_destination_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            host = Path(tmpdir) / "host"
+            agents = host / "agents"
+            agents.mkdir(parents=True)
+            (agents / "quiet-agent.toml").write_text("legacy")
+            outside = Path(tmpdir) / "outside"
+            outside.mkdir()
+            (host / "agents-bench").symlink_to(outside, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "destination parent"):
+                sync_agents_dir(root, agents, "codex")
+            self.assertEqual((agents / "quiet-agent.toml").read_text(), "legacy")
+            self.assertEqual(list(outside.iterdir()), [])
+
+    def test_benched_legacy_toml_moves_roll_back_after_later_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            for name in ("first", "second"):
+                (root / f"agents/{name}.md").write_text(f"---\nname: {name}\ndescription: demo\n---\nbody\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["first", "second"]}}))
+            agents = Path(tmpdir) / "host/agents"
+            agents.mkdir(parents=True)
+            expected = {}
+            for name in ("first", "second"):
+                expected[name] = f"{name} profile\n".encode()
+                (agents / f"{name}.toml").write_bytes(expected[name])
+
+            original_unlink = Path.unlink
+
+            def fail_second_source(path: Path, *args, **kwargs):
+                if path == agents / "second.toml":
+                    (agents / "first.toml").write_bytes(b"concurrent replacement\n")
+                    raise OSError("simulated source unlink failure")
+                return original_unlink(path, *args, **kwargs)
+
+            with patch.object(Path, "unlink", fail_second_source):
+                with self.assertRaisesRegex(OSError, "rollback conflict"):
+                    sync_agents_dir(root, agents, "codex")
+
+            self.assertEqual((agents / "first.toml").read_bytes(), b"concurrent replacement\n")
+            self.assertEqual((agents.parent / "agents-bench/first.toml").read_bytes(), expected["first"])
+            self.assertEqual((agents / "second.toml").read_bytes(), expected["second"])
+            self.assertFalse((agents.parent / "agents-bench/second.toml").exists())
+
+    def test_benched_legacy_toml_source_symlink_replacement_fails_identity_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "repo"
+            (root / "agents").mkdir(parents=True)
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("canonical\n")
+            (root / "agents/quiet-agent.md").write_text("---\nname: quiet-agent\ndescription: demo\n---\nbody\n")
+            (root / "host_agents.json").write_text(json.dumps({"codex": {"include": "all", "exclude": ["quiet-agent"]}}))
+            agents = Path(tmpdir) / "host/agents"
+            agents.mkdir(parents=True)
+            active = agents / "quiet-agent.toml"
+            active.write_text("original profile\n")
+            original = Path(tmpdir) / "original.toml"
+            target = Path(tmpdir) / "target.toml"
+            target.write_text("do not link this target\n")
+            real_link = os.link
+
+            def replace_with_symlink(source, destination, *, follow_symlinks=True):
+                active.rename(original)
+                active.symlink_to(target)
+                return real_link(source, destination, follow_symlinks=follow_symlinks)
+
+            with patch("autonomous_pipeline.host_sync.os.link", replace_with_symlink):
+                with self.assertRaisesRegex(OSError, "rollback conflict"):
+                    sync_agents_dir(root, agents, "codex")
+
+            self.assertEqual(original.read_text(), "original profile\n")
+            self.assertTrue(active.is_symlink())
+            self.assertEqual(target.read_text(), "do not link this target\n")
+
+    def test_host_sync_lock_serializes_independent_processes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = Path(tmpdir) / "host/agents"
+            probe = (
+                "from pathlib import Path; "
+                "from autonomous_pipeline.host_sync import _host_sync_lock_available; "
+                "print(_host_sync_lock_available(Path(__import__('sys').argv[1])))"
+            )
+            with _host_sync_lock(target):
+                child = subprocess.run(
+                    [sys.executable, "-c", probe, str(target)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(child.stdout.strip(), "False")
+            child = subprocess.run(
+                [sys.executable, "-c", probe, str(target)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(child.stdout.strip(), "True")
 
     def test_sync_skips_target_inside_git_worktree(self) -> None:
         """A host target whose paths sit inside a git checkout is owned by that

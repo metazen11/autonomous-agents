@@ -4,7 +4,11 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
+import tempfile
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
@@ -180,6 +184,176 @@ def host_bench_sources(repo_root: Path, host: str | None) -> list[Path]:
 
 def bench_dir(agents_dir: Path) -> Path:
     return agents_dir.parent / "agents-bench"
+
+
+_LegacyTomlMove = tuple[Path, Path, int, int]
+_SYNC_LOCKS_GUARD = threading.Lock()
+_SYNC_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _host_sync_lock_path(agents_dir: Path) -> tuple[str, Path]:
+    target_key = str(agents_dir.resolve())
+    lock_name = hashlib.sha256(target_key.encode()).hexdigest() + ".lock"
+    lock_dir = Path(tempfile.gettempdir()) / "autonomous-host-sync-locks"
+    lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return target_key, lock_dir / lock_name
+
+
+def _lock_host_sync_fd(lock_fd: int, *, blocking: bool) -> bool:
+    if os.name == "nt":
+        import msvcrt
+
+        if os.fstat(lock_fd).st_size == 0:
+            os.write(lock_fd, b"0")
+        os.lseek(lock_fd, 0, os.SEEK_SET)
+        try:
+            mode = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            msvcrt.locking(lock_fd, mode, 1)
+        except OSError:
+            if blocking:
+                raise
+            return False
+        return True
+
+    import fcntl
+
+    operation = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+    try:
+        fcntl.flock(lock_fd, operation)
+    except BlockingIOError:
+        if blocking:
+            raise
+        return False
+    return True
+
+
+def _unlock_host_sync_fd(lock_fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(lock_fd, 0, os.SEEK_SET)
+        msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
+
+def _host_sync_lock_available(agents_dir: Path) -> bool:
+    """Nonblocking interprocess lock probe used by host-sync diagnostics/tests."""
+    _, lock_path = _host_sync_lock_path(agents_dir)
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        acquired = _lock_host_sync_fd(lock_fd, blocking=False)
+        if acquired:
+            _unlock_host_sync_fd(lock_fd)
+        return acquired
+    finally:
+        os.close(lock_fd)
+
+
+@contextmanager
+def _host_sync_lock(agents_dir: Path):
+    """Serialize canonical writers for an install path across threads/processes."""
+    target_key, lock_path = _host_sync_lock_path(agents_dir)
+    with _SYNC_LOCKS_GUARD:
+        thread_lock = _SYNC_LOCKS.setdefault(target_key, threading.RLock())
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    with thread_lock:
+        acquired = False
+        try:
+            acquired = _lock_host_sync_fd(lock_fd, blocking=True)
+            yield
+        finally:
+            if acquired:
+                _unlock_host_sync_fd(lock_fd)
+            os.close(lock_fd)
+
+
+def _legacy_bench_toml_moves(agents_dir: Path, sources: Sequence[Path]) -> list[_LegacyTomlMove]:
+    """Validate and return exact-name legacy TOMLs to move off the active path."""
+    moves = []
+    destination_dir = bench_dir(agents_dir)
+    if os.path.lexists(destination_dir) and (destination_dir.is_symlink() or not destination_dir.is_dir()):
+        raise ValueError(f"cannot bench legacy TOMLs: destination parent is not a directory: {destination_dir}")
+    for source in sources:
+        active = agents_dir / f"{source.stem}.toml"
+        destination = destination_dir / active.name
+        if not os.path.lexists(active):
+            continue
+        if active.is_symlink() or not active.is_file():
+            raise ValueError(f"cannot bench legacy TOML {active}: expected a regular file")
+        source_stat = active.stat(follow_symlinks=False)
+        if os.path.lexists(destination):
+            raise ValueError(f"cannot bench legacy TOML {active}: destination already exists: {destination}")
+        moves.append((active, destination, source_stat.st_dev, source_stat.st_ino))
+    return moves
+
+
+def _move_legacy_bench_tomls(moves: Sequence[_LegacyTomlMove]) -> None:
+    """Move validated files and roll back completed moves if any step fails."""
+    if not moves:
+        return
+    moves[0][1].parent.mkdir(parents=True, exist_ok=True)
+    created: list[_LegacyTomlMove] = []
+    try:
+        for active, destination, expected_dev, expected_ino in moves:
+            # link() atomically refuses an existing destination. If unlink or a
+            # later move fails, restore every completed source before raising.
+            source_fd = os.open(active, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                source_stat = os.fstat(source_fd)
+                if (
+                    not stat.S_ISREG(source_stat.st_mode)
+                    or (source_stat.st_dev, source_stat.st_ino) != (expected_dev, expected_ino)
+                ):
+                    raise OSError(f"legacy TOML changed after preflight: {active}")
+                os.link(active, destination, follow_symlinks=False)
+                created.append((active, destination, expected_dev, expected_ino))
+                destination_stat = destination.stat(follow_symlinks=False)
+                if (destination_stat.st_dev, destination_stat.st_ino) != (expected_dev, expected_ino):
+                    raise OSError(f"legacy TOML changed during move; preserving destination: {destination}")
+                current_source_stat = active.stat(follow_symlinks=False)
+                if (
+                    not stat.S_ISREG(current_source_stat.st_mode)
+                    or (current_source_stat.st_dev, current_source_stat.st_ino) != (expected_dev, expected_ino)
+                ):
+                    raise OSError(f"legacy TOML changed before removal; preserving destination: {active}")
+                active.unlink()
+            finally:
+                os.close(source_fd)
+    except OSError as original_error:
+        rollback_errors = []
+        for active, destination, expected_dev, expected_ino in reversed(created):
+            try:
+                if os.path.lexists(active):
+                    active_stat = active.stat(follow_symlinks=False)
+                    if (active_stat.st_dev, active_stat.st_ino) == (expected_dev, expected_ino):
+                        destination_stat = destination.stat(follow_symlinks=False)
+                        if (destination_stat.st_dev, destination_stat.st_ino) == (expected_dev, expected_ino):
+                            destination.unlink()
+                        else:
+                            rollback_errors.append(
+                                OSError(f"rollback conflict: destination changed; preserved {destination}")
+                            )
+                    else:
+                        rollback_errors.append(
+                            OSError(f"rollback conflict: active path changed; preserved {destination}")
+                        )
+                else:
+                    destination_stat = destination.stat(follow_symlinks=False)
+                    if (destination_stat.st_dev, destination_stat.st_ino) != (expected_dev, expected_ino):
+                        raise OSError(f"rollback conflict: destination changed; preserved {destination}")
+                    os.link(destination, active, follow_symlinks=False)
+                    destination.unlink()
+            except OSError as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            raise OSError(
+                f"legacy TOML migration failed ({original_error}); rollback also failed: "
+                + "; ".join(str(error) for error in rollback_errors)
+            ) from original_error
+        raise
 
 
 def set_bench(repo_root: Path, stem: str, benched: bool, hosts: Sequence[str] | None = None) -> list[str]:
@@ -408,6 +582,17 @@ def _target_is_git_managed(target: HostTarget) -> bool:
 
 
 def sync_target(repo_root: Path, target: HostTarget) -> bool:
+    lock_target = target.agents_dir
+    if lock_target is None:
+        lock_target = next(
+            (path for path in (target.skill_path, target.instructions_path, target.config_snippet_path) if path is not None),
+            repo_root,
+        )
+    with _host_sync_lock(lock_target):
+        return _sync_target_unlocked(repo_root, target)
+
+
+def _sync_target_unlocked(repo_root: Path, target: HostTarget) -> bool:
     """Sync *target*. Returns True when the sync ran, False when it was skipped.
 
     Skipped when the target's destination paths are git-tracked — see
@@ -427,6 +612,14 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
         )
         return False
 
+    # Validate every legacy profile before creating directories or writing any
+    # other target files. A conflict must leave the entire sync untouched.
+    legacy_moves = []
+    if target.agents_dir:
+        _, benched_sources = _split_host_agents(repo_root, target.name)
+        legacy_moves = _legacy_bench_toml_moves(target.agents_dir, benched_sources)
+    _move_legacy_bench_tomls(legacy_moves)
+
     if target.skill_path and target.agents_dir:
         target.skill_path.parent.mkdir(parents=True, exist_ok=True)
         target.agents_dir.mkdir(parents=True, exist_ok=True)
@@ -436,7 +629,7 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
             dest = target.skill_path.parent.parent / source.parent.name / "skill.md"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(source.read_text())
-        sync_agents_dir(repo_root, target.agents_dir, target.name)
+        _sync_agents_dir_unlocked(repo_root, target.agents_dir, target.name)
 
     if target.schemas_dir:
         target.schemas_dir.mkdir(parents=True, exist_ok=True)
@@ -469,8 +662,15 @@ def sync_target(repo_root: Path, target: HostTarget) -> bool:
 
 
 def sync_agents_dir(repo_root: Path, agents_dir: Path, host: str | None = None) -> None:
+    with _host_sync_lock(agents_dir):
+        _sync_agents_dir_unlocked(repo_root, agents_dir, host)
+
+
+def _sync_agents_dir_unlocked(repo_root: Path, agents_dir: Path, host: str | None = None) -> None:
     active, bench = _split_host_agents(repo_root, host)
+    legacy_moves = _legacy_bench_toml_moves(agents_dir, bench)
     rendered = {source: render_agent_prompt(source, repo_root=repo_root) for source in active + bench}
+    _move_legacy_bench_tomls(legacy_moves)
     _write_agents(agents_dir, active, rendered)
     if bench or bench_dir(agents_dir).is_dir():
         _write_agents(bench_dir(agents_dir), bench, rendered)
@@ -500,6 +700,9 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             bench.append(name)
             if (target.agents_dir / name).exists():
                 bench_problems.append(f"{name}(active)")
+            legacy_toml = target.agents_dir / f"{source.stem}.toml"
+            if os.path.lexists(legacy_toml):
+                bench_problems.append(f"{legacy_toml.name}(active)")
             benched_file = bench_dir(target.agents_dir) / name
             if not benched_file.exists() or benched_file.read_text() != render_agent_prompt(source, repo_root=repo_root):
                 bench_problems.append(f"{name}(missing)")

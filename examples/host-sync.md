@@ -22,6 +22,21 @@ What gets synced for the primary hosts:
 - Gemini: `skill.md`, `agents/*.md`, `GEMINI.md`, optional MCP snippet
 - Anvil: pipeline prompt, core agents, curated agent bundles, schemas, scripts, `AGENTS.md`
 
+For Codex, source sync also enforces the `host_agents.json` bench selection for
+legacy same-name TOML profiles. A benched canonical source named
+`regime-filter-tuner.md` owns the legacy `regime-filter-tuner.toml` filename:
+sync moves that regular file to the sibling `agents-bench/` directory without
+rewriting its bytes. Unrelated TOML profiles stay in place. A symlink, other
+non-file entry, or existing bench destination stops sync before it writes
+other target files; resolve that conflict manually. `check` reports an active
+same-name TOML as out of sync. Do not edit installed TOML profiles directly;
+change the canonical bench selection and run source-controlled sync.
+Canonical sync writers serialize on a per-install lock across preflight,
+migration, and the rest of the sync. Direct or third-party edits to the
+installed agent directory do not participate in that lock; such concurrent
+out-of-band writes are unsupported. If a file identity changes during a sync,
+the sync fails and preserves conflicting copies for manual reconciliation.
+
 The GitHub repo is the distribution source:
 
 ```text
