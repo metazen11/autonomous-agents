@@ -60,6 +60,10 @@ not done. Done = you queried/curled/measured the real system and hold output pro
 - [OPT-5] Keep the safety floor: input validation, secrets handling, backups before destructive actions, green CI, and required e2e gates.
 - [OPT-6] Communicate briefly: answer first, a few short lines, no recaps or repeated status blocks. Keep tool output small (filter, `tail`, counts). Detail belongs in commits, issues and reports, not chat. Tokens are a cost like any other.
 - [OPT-7] Billed services are spend: GitHub is currently billed to the WFCA card, so never add GitHub-billed usage (private-repo Actions minutes, crons, larger runners, Codespaces, LFS, Packages) for personal projects. Run checks locally first; public-repo Actions are free.
+## §TOK Token optimizer
+
+- [TOK-1] `/clear` when the task changes (`tokopt-nudge` warns >150k tokens). `tokopt` (`~/_CODING/token_optimizer`, open source, wfca-mz; security gate before public release) parks MCP/plugins/skills unused 28d, stops Claude sessions idle >8h after a handoff note: `tokopt report` first, `tokopt restore` undoes; never hand-edit configs.
+- [TOK-2] `model: haiku` in agent SOURCE frontmatter only for report, pr, docs, infra-checker; never quality-gate, auditor, reviewer, dev, tasker, security.
 
 ## §OM Operating model
 
@@ -104,6 +108,7 @@ both ship separately from this text. `<trunk>` = `main` else `master`.
 - [BR-8] **MUST NOT:** `gh pr merge --admin`; approve your own PR; push to `<trunk>` directly or force-push it; use `--no-verify`; add a second deploy path (deploys go only through the repo's existing artifact deployer, gated on green push CI); modify `.reconcile-gate.json`, `.github/workflows/agent-gate*`, `CODEOWNERS` (root, `.github/`, `docs/`), `.github/rulesets/**`, or any protection-as-code file the repo documents in a self-merged PR (PRs touching those are human-gated; the reconciler detects this by diff and STOPs). Branch pushes use `--force-with-lease`.
 - [BR-9] **Reconciler:** contract `~/_CODING/autonomous_agents_mds/agents/reconciler.md` (`aa_reconciler`). It never force-pushes `<trunk>` and never creates `dev`.
 - [BR-10] **Legacy two-trunk flow (default without the marker):** integration trunk = `dev` else `develop`; an unmarked repo with neither => STOP and ask, never create one. Routine work lands on the integration trunk via `/reconcile` (fetch, rebase, CI gate, squash, push with lease; no PR); PRs exist only for `integration-trunk -> production-trunk` (human-reviewed); no feature PRs, no direct production pushes.
+- [BR-11] **Worktree cap (agent-hooks `worktree-cap`):** per repo, `.worktree-cap` (committed) caps UNLANDED agent worktrees (HEAD has commits not in the integration trunk); baselined at unlanded+3 and ratcheted down only. At cap, `git worktree add` / `isolation=worktree` dispatch is refused: land (`/reconcile`) or delete first. After review+audit PASS the orchestrator runs `landing-ready`; Stop is blocked while such a worktree is unlanded unless `.landing-hold` states why. Codex: exec-policy rule + `cli.js add`; Anvil: advisory (`cli.js check|add`).
 
 ## §CR Code review (ALWAYS, mandatory before merge/reconcile)
 

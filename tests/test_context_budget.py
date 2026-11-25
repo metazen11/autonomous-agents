@@ -29,8 +29,8 @@ REFERENCE = REPO / "docs" / "contract-reference.md"
 HOSTS = ("claude", "codex", "gemini", "anvil")
 # Frozen rule inventory. Dropping a rule from the reference fails here; adding one means bumping its count.
 EXPECTED_RULE_COUNTS = {
-    "RC": 15, "DD": 4, "SEC": 2, "HG": 3, "OPT": 7, "OM": 13,
-    "IN": 7, "BR": 10, "CR": 6, "IP": 11, "SS": 7,
+    "RC": 15, "DD": 4, "SEC": 2, "HG": 3, "OPT": 7, "TOK": 2, "OM": 13,
+    "IN": 7, "BR": 11, "CR": 6, "IP": 11, "SS": 7,
 }
 RULE_ID = re.compile(r"^- \[([A-Z]+)-(\d+)\]", re.M)
 

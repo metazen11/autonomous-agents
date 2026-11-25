@@ -240,6 +240,13 @@ That integration direction is not complete in this repository yet, but it is the
 | [compliance-fixer](agents/compliance-fixer.md) | Bounded SOC 2/HIPAA remediation | bounded_write |
 | [skill-promoter](agents/skill-promoter.md) | Mines repeated workflows, promotes to automation | read_only |
 
+### UI QA tooling
+| Component | Role |
+|-----------|------|
+| [qa-ui](agent_bundles/anvil-local/agents/qa-ui.md) | Headed Playwright/MCP UI testing; runs in the visible-vm container |
+| [visible-vm skill](skills/visible-vm/skill.md) / [tools/visible-vm](tools/visible-vm) | Watchable (noVNC) headed-browser container; `vm up/run/browser/watch/down` |
+| [qa-ui runbook](docs/runbooks/qa-ui.md) | Spot check vs test, repo bootstrap, reporting rules |
+
 ### Security & Compliance (4 agents)
 | Agent | Role | Mode |
 |-------|------|------|

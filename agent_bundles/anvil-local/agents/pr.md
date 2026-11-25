@@ -1,5 +1,6 @@
 ---
 name: pr
+model: haiku
 description: "Agent-agnostic pull request specialist. Prepares merge-ready PR metadata, change summaries, review context, verification notes, and operator-facing rollout details."
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: report
+model: haiku
 description: "Agent-agnostic reporting specialist. Produces structured delivery summaries covering implementation, verification, findings, residual risk, and follow-up actions."
 ---
 
