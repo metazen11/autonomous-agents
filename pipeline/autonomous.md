@@ -82,10 +82,10 @@ authored a prompt, so do not claim that hooks authenticate the owner. Fail
 closed if Git cannot verify the count. Before admission, require every
 non-primary checkout clean and its commits landed on the read-only verified
 policy trunk; if checkout, remote, or policy state is uncertain, preserve work
-and inspect read-only. Hook enforcement covers only registered
-agent and direct shell paths; it cannot guarantee blocking arbitrary
-subprocesses, external Git clients, or app operations that do not invoke the
-hook.
+and inspect read-only. Host-hook enforcement does not cover Anvil's internal
+worktree-creation subprocesses, arbitrary Git clients, or app operations that
+bypass the hook. Anvil's internal worktree creators need their own guard at the
+creation boundary; that separate work is tracked in Anvil issue #529.
 If an explicitly isolated lane already runs under `.claude/worktrees/agent-<id>/`, the global
 `worktree-write-guard` continues to block writes outside that lane's checkout.
 See `reports/2026-05-24-runaway-subagent-postmortem.md` for the incident that

@@ -474,6 +474,9 @@ class HostSyncTest(unittest.TestCase):
         self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", autonomous)
         self.assertIn("every non-primary checkout clean", autonomous_policy)
         self.assertIn("commits landed on the read-only verified policy trunk", autonomous_policy)
+        self.assertIn("Host-hook enforcement does not cover Anvil's internal worktree-creation subprocesses", autonomous_policy)
+        self.assertIn("arbitrary Git clients, or app operations that bypass the hook", autonomous_policy)
+        self.assertIn("tracked in Anvil issue #529", autonomous_policy)
         self.assertTrue((root / "scripts/reconcile_lock.sh").is_file())
 
     def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
