@@ -29,8 +29,8 @@ REFERENCE = REPO / "docs" / "contract-reference.md"
 HOSTS = ("claude", "codex", "gemini", "anvil")
 # Frozen rule inventory. Dropping a rule from the reference fails here; adding one means bumping its count.
 EXPECTED_RULE_COUNTS = {
-    "RC": 15, "DD": 4, "SEC": 2, "HG": 3, "OPT": 7, "TOK": 2, "OM": 13,
-    "IN": 7, "BR": 11, "CR": 6, "IP": 11, "SS": 7,
+    "RC": 15, "DD": 4, "SEC": 2, "HG": 3, "OPT": 7, "TOK": 2, "OM": 14,
+    "IN": 7, "BR": 11, "CR": 6, "IP": 12, "SS": 7,
 }
 RULE_ID = re.compile(r"^- \[([A-Z]+)-(\d+)\]", re.M)
 
@@ -78,6 +78,27 @@ class OrderingAndBudgetTest(unittest.TestCase):
     def test_claude_and_codex_files_fit_budget(self) -> None:
         for host in ("claude", "codex"):
             self.assertLessEqual(len(render(host).encode()), 8 * 1024, host)
+
+    def test_audit_readiness_is_distinct_from_post_land_pass(self) -> None:
+        for host in HOSTS:
+            with self.subTest(host=host):
+                rendered = render(host)
+                self.assertIn("READY_TO_RECONCILE", rendered)
+                self.assertIn("READY_TO_MERGE", rendered)
+                self.assertIn("PRE_LAND or POST_LAND", rendered)
+                self.assertIn("Post-land full `PASS <sha>`", rendered)
+                self.assertIn("legacy `/reconcile` uses the issue", rendered)
+                self.assertIn("PRs use a current-head comment", rendered)
+
+    def test_reconcile_skill_and_contract_enforce_final_audit_after_landing(self) -> None:
+        skill = (REPO / "skills/reconcile/skill.md").read_text()
+        contract = (REPO / "docs/contract-reference.md").read_text()
+        self.assertIn("READY_TO_RECONCILE", skill)
+        self.assertIn("validate_reconcile_evidence.py legacy", skill)
+        self.assertIn("validate_reconcile_evidence.py final", skill)
+        self.assertIn("fresh full-issue PASS before closure", skill)
+        self.assertIn("Owner-maintained phase map", contract)
+        self.assertIn("Only readiness may integrate; only final PASS may close", contract)
 
     def test_agent_descriptions_fit_budget(self) -> None:
         for source in repo_agent_sources(REPO):

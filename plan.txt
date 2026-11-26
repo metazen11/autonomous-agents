@@ -244,7 +244,7 @@ Turn this repository from an agent-agnostic prompt pack into a working autonomou
 ### 5.3 Add branch and merge strategy
 
 - One task branch per parent task
-- Optional temporary worker branches or worktrees for subtasks
+- Optional worker branches for subtasks in the assigned checkout, with non-overlapping file ownership; create a worktree only on explicit owner request and when the shared guard verifies the repository is below the hard cap of 5
 - Merge back after each verified layer
 - One final PR
 

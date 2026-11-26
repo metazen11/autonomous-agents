@@ -31,22 +31,15 @@ Your input is a target. At minimum, one of:
 If any of these are missing, ASK once, then proceed with best-effort defaults from
 `reports/occ_configs.json` and `docs/FILES.md`.
 
-## Environment discipline — always use a worktree
+## Environment discipline — use the assigned checkout
 
-**Before running any backtest, create an isolated git worktree.** Backtests write
-to `reports/` and mutate the candle cache; running in the main tree contaminates
-other concurrent sessions.
-
-```bash
-# From /Users/mz/_CODING/trading
-git worktree add ../etrade-honesty-<SYMBOL>-<YYYYMMDD> -b honesty/<SYMBOL>-<YYYYMMDD>
-cd ../etrade-honesty-<SYMBOL>-<YYYYMMDD>
-```
-
-- The `honesty/` prefix signals a verification-only branch; nothing merges from
-  here unless the strategy PASSES and the operator promotes.
-- Each verification session gets its own worktree. Never reuse.
-- On completion, `git worktree remove` unless the operator promotes.
+Use the task's assigned existing checkout and record its branch, HEAD, and dirty
+state before a backtest. Keep artifacts in a task-specific output directory and
+coordinate file ownership with concurrent work. Do not create a new worktree for
+routine verification. A new one requires an explicit operator request and a
+verified count below the repository cap of five. Remove a worktree only after it
+is clean, inactive, and its commit is reachable from the intended trunk; preserve
+dirty or unmerged verification results.
 
 ## The five iron checks — run in order, stop on first FAIL
 

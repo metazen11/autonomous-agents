@@ -132,6 +132,10 @@ class HostSyncTest(unittest.TestCase):
             (repo_root / "agents").mkdir(parents=True)
             (repo_root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("# Shared contract\nfixture rules\n")
             (repo_root / "pipeline" / "autonomous.md").write_text("skill content\n")
+            (repo_root / "skills" / "extra").mkdir(parents=True)
+            (repo_root / "skills" / "extra" / "skill.md").write_text("extra skill\n")
+            (repo_root / "skills" / "reconcile").mkdir(parents=True)
+            (repo_root / "skills" / "reconcile" / "skill.md").write_text("reuse existing checkout\n")
             (repo_root / "agents" / "one.md").write_text("---\nname: one\ndescription: demo\n---\nagent one\n")
             (repo_root / "agents" / "two.md").write_text("---\nname: two\ndescription: demo\n---\nagent two\n")
 
@@ -148,6 +152,11 @@ class HostSyncTest(unittest.TestCase):
 
             result = sync_target(repo_root, target)
             self.assertTrue(result, "sync_target should return True for a plain target")
+            self.assertEqual((target.skill_path.parent.parent / "extra" / "skill.md").read_text(), "extra skill\n")
+            self.assertEqual(
+                (target.skill_path.parent.parent / "reconcile" / "skill.md").read_text(),
+                "reuse existing checkout\n",
+            )
             status = check_target(repo_root, target)
         self.assertTrue(status.skill_in_sync)
         self.assertEqual(status.missing_agents, [])
@@ -374,8 +383,11 @@ class HostSyncTest(unittest.TestCase):
             )
 
             self.assertIn(f"# {spec.instruction_filename}", instructions)
-            self.assertIn("YOU ARE AN ORCHESTRATOR OF DEVELOPMENT TEAMS AND AGENTS.", instructions)
-            self.assertIn("ALWAYS DISPATCH AGENTS IN PERSONAL WORKTREE", instructions)
+            self.assertIn("prioritize only within the owner's approved queue", instructions)
+            self.assertIn("Reuse assigned checkout.", instructions)
+            self.assertIn("carry current decisions across sessions", instructions)
+            self.assertIn("Stop at queue end, a real fork, or concrete blocker", instructions)
+            self.assertIn("Queue membership alone does not authorize live, money, production, or credential actions", instructions)
             self.assertIn("Automate and make everything easier as you go", instructions)
             self.assertIn("if hooks are not present, create them", instructions)
             self.assertIn("Session-handoff markers (agent-agnostic)", instructions)
@@ -385,24 +397,84 @@ class HostSyncTest(unittest.TestCase):
             # Single-trunk is a positive per-repo opt-in; fail closed; no dev creation.
             self.assertIn('.reconcile-gate.json', instructions)
             self.assertIn("review: APPROVE <sha>", instructions)
-            self.assertIn("audit: PASS <sha>", instructions)
-            self.assertIn("required_approving_review_count == 0", instructions)
+            self.assertIn("audit: READY_TO_MERGE <sha>", instructions)
+            self.assertIn("READY_TO_RECONCILE", instructions)
+            self.assertIn("Post-land full `PASS <sha>`", instructions)
+            self.assertIn("zero required approvals", instructions)
             self.assertIn("never creates `dev`", instructions)
-            self.assertIn("The ORCHESTRATING agent", instructions)
+            self.assertIn("orchestrator posts evidence", instructions)
+            self.assertIn("Use task's assigned checkout; verify path, branch, clean state", instructions)
+            self.assertIn("Stop on mismatch, dirtiness, or unclear owner", instructions)
+            self.assertIn("No auto worktree; explicit owner request", instructions)
+            self.assertIn("verified total <5 required", instructions)
+            self.assertIn("Originator maintains phase map", instructions)
+            self.assertIn("GitHub-verified repo admin/maintainer", instructions)
+            self.assertIn("all non-primary trees clean and landed on verified policy trunk", instructions)
+            self.assertIn("uncertain state blocks creation", instructions)
+            self.assertIn("Preserve and inspect read-only", instructions)
             self.assertNotIn("permissions.admin", instructions)
             self.assertIn("--match-head-commit", instructions)
             self.assertIn("An unprotected trunk is human-gated", instructions)
-            rule = instructions[instructions.index("**Self-merge permission"):].split("\n")[0]
+            rule = instructions[instructions.index("**PR self-merge permission"):].split("\n")[0]
             self.assertIn("agent-gate", rule)
             self.assertIn(".github/rulesets/**", instructions)
             self.assertIn("Operator approval is still required", instructions)
             self.assertNotIn("= fast-path", instructions)
-            self.assertNotIn("counts as", instructions.split("**Self-merge permission")[1].split("**MUST NOT")[0])
+            self.assertNotIn("counts as", instructions.split("**PR self-merge permission")[1].split("**MUST NOT")[0])
             self.assertNotIn("reconciler MUST create `dev`", instructions)
             self.assertNotIn("Pre-live delivery mode", instructions)
-            # Installed files live outside the repo; a relative docs/ pointer dangles there.
+            # Installed files live outside the repo; a relative docs/ pointer dangles.
             self.assertNotIn("`docs/contract-reference.md`", instructions)
             self.assertIn("`~/_CODING/autonomous_agents_mds/docs/contract-reference.md`", instructions)
+
+    def test_host_agnostic_pipeline_carries_bounded_autonomy(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        prompt = (root / "pipeline/autonomous-spec-host-agnostic.md").read_text()
+        for rule in (
+            "Work through approved tasks in sequence without asking for the same approval again",
+            "Stop when the approved queue is empty, at a real decision fork, or at a concrete blocker",
+            "Do not invent adjacent tasks",
+            "Queue membership alone does not authorize work touching live systems, money, production deployments, or credentials",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, prompt)
+
+    def test_specialists_do_not_require_fresh_worktrees(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for path in (
+            root / "agents/regime-filter-tuner.md",
+            root / "agents/strategy-honesty-checker.md",
+        ):
+            prompt = path.read_text()
+            with self.subTest(path=path.name):
+                self.assertIn("Use the task's assigned existing checkout", prompt)
+                self.assertNotIn("Each research session gets its own worktree. Never reuse.", prompt)
+                self.assertNotIn("Each verification session gets its own worktree. Never reuse.", prompt)
+
+    def test_reconcile_skill_never_creates_a_worktree_by_default(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        prompt = (root / "skills/reconcile/skill.md").read_text()
+        self.assertIn("Do not automatically run `git worktree add`", prompt)
+        self.assertIn("explicit owner request", prompt)
+        self.assertIn("hard cap of five", prompt)
+        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", prompt)
+        self.assertIn("scripts/reconcile_lock.sh release <task-id> <assigned-checkout> <assigned-branch>", prompt)
+        self.assertIn("does not authenticate the prompt author", prompt)
+        self.assertIn("The originating issue or dispatch must name the exact checkout and working branch", prompt)
+        self.assertIn("If the assigned checkout is dirty, ownership is unclear", prompt)
+        self.assertIn("every other checkout clean and landed on the verified policy trunk", prompt)
+        self.assertIn("If remote, policy, or checkout state is uncertain, preserve work and inspect read-only", prompt)
+        self.assertIn("Interrupted-lock recovery", prompt)
+        self.assertIn("verify no reconcile process is active for this checkout", prompt)
+        self.assertIn("recorded task, checkout, and branch match this assignment", prompt)
+        self.assertIn("Never remove lock files manually", prompt)
+        autonomous = (root / "pipeline/autonomous.md").read_text()
+        autonomous_policy = " ".join(autonomous.split())
+        self.assertIn("Reconcile checkout and lock assigned", autonomous)
+        self.assertIn("scripts/reconcile_lock.sh acquire <task-id> <assigned-checkout> <assigned-branch>", autonomous)
+        self.assertIn("every non-primary checkout clean", autonomous_policy)
+        self.assertIn("commits landed on the read-only verified policy trunk", autonomous_policy)
+        self.assertTrue((root / "scripts/reconcile_lock.sh").is_file())
 
     def test_no_hardcoded_dev_ref_in_agent_docs(self) -> None:
         root = Path(__file__).resolve().parents[1]

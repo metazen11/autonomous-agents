@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reconcile audit lifecycle: owner-maintained criterion phases; readiness is SHA-bound and flow-specific (issue for legacy reconcile, PR for PR merge); a fresh full audit against the landed SHA is required before issue closure.
 - Agent bench (#23): a host's `exclude` list now syncs to `<host>/agents-bench/` (no host loads it) instead of being dropped. `sync_prompt_pack.py bench list | play <stem> | sit <stem>` moves an agent between the bench and the active set and re-syncs only the changed hosts; `check` reports the bench and fails on a benched agent in the active dir. Benched on Claude and Codex: the 10 finance agents, `anvil-qa`, `anvil-qa-ui`, `regime-filter-tuner`, `strategy-honesty-checker`. Agent-description block 8855 B to 6365 B (~2214 to ~1592 tokens), 47 to 34 agents.
 - Non-agent files (no `name:`/`description:` frontmatter, e.g. `agents/secret_rotator.SPEC.md`) are no longer rendered into host agent dirs.
 

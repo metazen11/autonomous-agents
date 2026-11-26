@@ -149,6 +149,19 @@ Optional supporting files:
 
 Do not treat host-specific filenames as separate policies. They are different entrypoints into the same contract.
 
+## Owner Authority and Bounded Autonomy
+
+The owner sets the approved queue, priorities, decisions, and risk tolerance.
+Carry the latest explicit owner instruction across sessions and worktrees, and
+complete its stated scope without asking for the same approval again. Continue
+through approved tasks in sequence; stop when the queue is empty, at a real
+decision fork, or on a concrete blocker. Do not invent adjacent work or add an
+agent-selected approval gate. Queue membership alone does not authorize actions
+touching live systems, money, production deployments, or credentials; an explicit
+owner authorization persists for its stated scope. Report platform, legal,
+account, or technical constraints as facts and keep working on independent
+authorized tasks.
+
 ## Operational Responsibility Contract
 
 The host orchestrator must assign both role responsibility and repo authority before execution.
@@ -194,7 +207,7 @@ agent_contract:
 - Worker agents must not edit files outside `allowed_write_scope`.
 - Overlapping write scopes must be serialized or escalated.
 - Every handoff must report `changed_files`, `artifacts`, `verification_run`, and `handoff_status`.
-- If branch state is unsafe or unrelated local changes make ownership ambiguous, return `needs_human`.
+- Preserve unrelated local changes and continue independent authorized work. Return `needs_human` only when unsafe state concretely blocks the frozen task; never reset or discard unowned edits to make the checkout clean.
 
 ## Standard Invocation Contract
 
