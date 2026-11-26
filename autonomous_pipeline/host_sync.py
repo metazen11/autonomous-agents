@@ -438,10 +438,30 @@ def repo_skill_file_sources(repo_root: Path) -> list[Path]:
     skills_dir = repo_root / "skills"
     if not skills_dir.is_dir():
         return []
-    return sorted(
-        path for path in skills_dir.rglob("*")
-        if path.is_file() and path.name != "skill.md"
-    )
+    sources = []
+    for path in skills_dir.rglob("*"):
+        if path.name == "skill.md":
+            continue
+        if not path.is_file():
+            if path.is_symlink():
+                raise ValueError(f"skill support file is not a regular file: {path}")
+            continue
+        _resolve_repo_skill_file_source(repo_root, path)
+        sources.append(path)
+    return sorted(sources)
+
+
+def _resolve_repo_skill_file_source(repo_root: Path, source: Path) -> Path:
+    """Resolve a support file and refuse symlinks that escape the prompt pack."""
+    root = repo_root.resolve()
+    try:
+        resolved = source.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"skill support file escapes or is missing from repository: {source}") from exc
+    if not resolved.is_file():
+        raise ValueError(f"skill support file is not a regular file: {source}")
+    return resolved
 
 
 # Scripts that should be synced to host targets (validation tools, not repo-internal tooling).
@@ -688,7 +708,7 @@ def _sync_target_unlocked(repo_root: Path, target: HostTarget) -> bool:
             dest.write_text(source.read_text())
         for source, dest in zip(repo_skill_file_sources(repo_root), skill_destinations, strict=True):
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(source.read_bytes())
+            dest.write_bytes(_resolve_repo_skill_file_source(repo_root, source).read_bytes())
             if source.suffix == ".sh":
                 dest.chmod(0o755)
         _sync_agents_dir_unlocked(repo_root, target.agents_dir, target.name)
@@ -816,7 +836,8 @@ def check_target(repo_root: Path, target: HostTarget) -> SyncStatus:
             relative = source.relative_to(repo_root / "skills")
             target_file = skill_root / relative
             unsafe_path = _skill_file_destination_problem(target_file, skill_root)
-            if unsafe_path is not None or not target_file.is_file() or sha256_file(source) != sha256_file(target_file):
+            safe_source = _resolve_repo_skill_file_source(repo_root, source)
+            if unsafe_path is not None or not target_file.is_file() or sha256_file(safe_source) != sha256_file(target_file):
                 missing_skill_files.append(relative.as_posix())
 
     return SyncStatus(

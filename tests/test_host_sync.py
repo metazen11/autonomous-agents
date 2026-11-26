@@ -565,6 +565,54 @@ class HostSyncTest(unittest.TestCase):
             self.assertTrue(status.instructions_in_sync)
             self.assertTrue(status.config_snippet_in_sync)
 
+    def test_sync_rejects_skill_support_symlink_escaping_repo_before_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "pack"
+            skill = root / "skills/autonomous"
+            skill.mkdir(parents=True)
+            (skill / "skill.md").write_text("skill body\n")
+            (root / "agents").mkdir()
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("contract\n")
+            secret = Path(tmpdir) / "outside.txt"
+            secret.write_text("private content\n")
+            (skill / "support.txt").symlink_to(secret)
+            target_home = Path(tmpdir) / "installed"
+            target_skill = target_home / "skills/autonomous/skill.md"
+            target_agents = target_home / "agents"
+            target = HostTarget(name="codex", skill_path=target_skill, agents_dir=target_agents)
+
+            with self.assertRaisesRegex(ValueError, "escapes or is missing from repository"):
+                sync_target(root, target)
+
+            self.assertFalse(target_skill.exists())
+            self.assertFalse(target_agents.exists())
+            self.assertFalse((target_home / "skills/autonomous/support.txt").exists())
+
+    def test_sync_accepts_skill_support_symlink_within_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "pack"
+            skill = root / "skills/autonomous"
+            skill.mkdir(parents=True)
+            (skill / "skill.md").write_text("skill body\n")
+            (root / "agents").mkdir()
+            (root / "agents/AGENT_AGNOSTIC_GUIDE.md").write_text("contract\n")
+            (root / "pipeline").mkdir()
+            (root / "pipeline/autonomous.md").write_text("skill bundle\n")
+            helper = root / "scripts/helper.sh"
+            helper.parent.mkdir()
+            helper.write_text("#!/bin/sh\nexit 0\n")
+            link = skill / "helper.sh"
+            link.symlink_to(os.path.relpath(helper, link.parent))
+            target_home = Path(tmpdir) / "installed"
+            target_skill = target_home / "skills/autonomous/skill.md"
+            target_agents = target_home / "agents"
+            target = HostTarget(name="codex", skill_path=target_skill, agents_dir=target_agents)
+
+            sync_target(root, target)
+
+            installed_helper = target_home / "skills/autonomous/helper.sh"
+            self.assertEqual(installed_helper.read_text(), helper.read_text())
+
     def test_installed_reconcile_helper_runs_from_a_different_target_repository(self) -> None:
         pack_root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmpdir:
